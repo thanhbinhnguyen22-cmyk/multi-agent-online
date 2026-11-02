@@ -55,19 +55,15 @@ def call_gemini_with_retry(client, model, contents, config=None, max_retries=5, 
 # --- CẤU HÌNH GIAO DIỆN TRANG WEB ---
 st.set_page_config(page_title="Pro Multi-Agent System", page_icon="🤖", layout="wide")
 st.title("🤖 Hệ thống Đa Tác Nhân Chuyên Sắc (Pro Multi-Agent)")
-st.write("Hệ thống phối hợp AI thông minh tích hợp Đa mô hình, Kho tri thức động và Auto-Retry chống quá tải.")
+st.write("Hệ thống phối hợp AI thông minh tích hợp Đa mô hình chuẩn Gemini 3.8, Kho tri thức động và Auto-Retry chống quá tải.")
 
-# Danh sách các mô hình hỗ trợ (đã bao gồm dòng 3.8, 2.5, 2.0 và 1.5)
+# Danh sách các mô hình khả dụng hiện tại
 AVAILABLE_MODELS = [
     "gemini-3.8-flash",
-    "gemini-3.8-pro",
-    "gemini-2.5-flash",
-    "gemini-2.5-pro",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash"
+    "gemini-3.8-pro"
 ]
 
-# Khởi tạo dữ liệu cấu hình Agent trong Session State
+# Khởi tạo dữ liệu cấu hình Agent trong Session State (Mặc định dùng gemini-3.8-flash chuẩn)
 if "agents_config" not in st.session_state:
     st.session_state.agents_config = {
         "agents": {
@@ -304,3 +300,4 @@ with tab2:
             with st.expander(f"[{row[1]}] Chế độ: {row[2]} — Yêu cầu: {row[3][:50]}..."):
                 st.write(f"**Yêu cầu gốc:** {row[3]}")
                 st.markdown("---")
+                st.markdown(row[4])
