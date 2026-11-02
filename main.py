@@ -45,19 +45,19 @@ if "agents_config" not in st.session_state:
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
-                "model": "gemini-2.5-flash",
+                "model": "gemini-3.8-flash",
                 "temperature": 0.3,
                 "system_prompt": "Bạn là chuyên gia hạ tầng CNTT. Hãy phân tích kỹ thuật, phần cứng, mạng và giải pháp công nghệ một cách chuẩn xác."
             },
             "security_expert": {
                 "name": "Chuyên gia ATTT",
-                "model": "gemini-2.5-flash",
+                "model": "gemini-3.8-flash",
                 "temperature": 0.1,
                 "system_prompt": "Bạn là chuyên gia An toàn thông tin. Hãy kiểm tra các rủi ro bảo mật, lỗ hổng hệ thống và mức độ tuân thủ tiêu chuẩn kỹ thuật."
             },
             "legal_expert": {
                 "name": "Chuyên gia Pháp chế",
-                "model": "gemini-2.5-flash",
+                "model": "gemini-3.8-flash",
                 "temperature": 0.1,
                 "system_prompt": "Bạn là chuyên gia luật công nghệ thông tin và văn bản quy phạm pháp luật hành chính nhà nước. Hãy rà soát tính hợp pháp và quy định liên quan."
             }
@@ -73,7 +73,7 @@ if selected_action == "➕ Thêm Agent mới":
     st.sidebar.subheader("Thêm Tác Nhân Mới")
     new_key = st.sidebar.text_input("Mã định danh (Key không dấu):")
     new_name = st.sidebar.text_input("Tên hiển thị:")
-    new_model = st.sidebar.selectbox("Chọn Model", ["gemini-2.5-flash", "gemini-2.5-pro"])
+    new_model = st.sidebar.selectbox("Chọn Model", ["gemini-3.8-flash", "gemini-3.8-pro"])
     new_temp = st.sidebar.slider("Temperature (Độ sáng tạo)", 0.0, 1.0, 0.2)
     new_prompt = st.sidebar.text_area("System Prompt:")
     
@@ -94,7 +94,7 @@ else:
         chosen_agent = st.sidebar.selectbox("Chọn Agent để chỉnh sửa", agent_keys)
         current_data = st.session_state.agents_config["agents"][chosen_agent]
         edit_name = st.sidebar.text_input("Tên hiển thị", value=current_data["name"])
-        edit_model = st.sidebar.selectbox("Chọn Model", ["gemini-2.5-flash", "gemini-2.5-pro"], index=0 if current_data["model"]=="gemini-2.5-flash" else 1)
+        edit_model = st.sidebar.selectbox("Chọn Model", ["gemini-3.8-flash", "gemini-3.8-pro"], index=0 if current_data["model"]=="gemini-3.8-flash" else 1)
         edit_temp = st.sidebar.slider("Temperature", 0.0, 1.0, float(current_data.get("temperature", 0.2)))
         edit_prompt = st.sidebar.text_area("System Prompt", value=current_data["system_prompt"])
         
@@ -114,16 +114,14 @@ else:
 
 st.sidebar.divider()
 st.sidebar.header("📚 Kho Tri thức Động (PDF)")
-# Tự động quét tìm tất cả file PDF trong thư mục knowledge_base
 pdf_files = glob.glob("knowledge_base/**/*.pdf", recursive=True)
 selected_pdf = st.sidebar.selectbox("Chọn tài liệu tham khảo cho phiên này:", ["Không dùng tài liệu"] + pdf_files)
 
 st.sidebar.divider()
-enable_hitl = st.sidebar.checkbox("🛡️ Bật kiểm duyệt thủ công (Human-in-the-Loop)", value=False, help="Cho phép bạn xem và chỉnh sửa kết quả của từng Agent trước khi chuyền sang bước tiếp theo.")
+enable_hitl = st.sidebar.checkbox("🛡️ Bật kiểm duyệt thủ công (Human-in-the-Loop)", value=False)
 
 # ================= GIAO DIỆN CHÍNH =================
 active_agents = st.session_state.agents_config["agents"]
-
 tab1, tab2 = st.tabs(["🚀 Chạy Hệ Thống", "📜 Lịch sử Phiên làm việc"])
 
 with tab1:
@@ -170,7 +168,6 @@ with tab1:
                             YÊU CẦU GỐC: {user_query}
                             """
                             
-                            # Cấu hình tham số Temperature
                             config_param = genai.types.GenerateContentConfig(
                                 temperature=agent_info.get("temperature", 0.2)
                             )
@@ -181,7 +178,6 @@ with tab1:
 
                         st.subheader(f"Bước {idx+1}: {agent_info['name']}")
                         
-                        # TÍNH NĂNG HUMAN-IN-THE-LOOP: Cho phép sửa nội dung trước khi chuyển tiếp
                         if enable_hitl:
                             agent_output = st.text_area(f"Kiểm duyệt/Sửa đổi kết quả của {agent_info['name']}:", value=agent_output, key=f"edit_{idx}")
 
@@ -189,11 +185,9 @@ with tab1:
                         accumulated_context += f"\n\n--- Ý kiến từ {agent_info['name']} ---\n{agent_output}"
                         final_report += f"## Bước {idx+1}: {agent_info['name']}\n{agent_output}\n\n"
 
-                    # Lưu vào CSDL SQLite
                     save_to_db("Pipeline", user_query, final_report)
                     st.success("🎉 Hoàn tất chuỗi Pipeline và đã lưu lịch sử!")
 
-                    # TÍNH NĂNG XUẤT BÁO CÁO (.md)
                     st.download_button(
                         label="📥 Tải xuống Báo cáo Tổng hợp (.md)",
                         data=final_report,
@@ -229,7 +223,6 @@ with tab1:
                     for r in range(debate_rounds):
                         round_num = r + 1
                         
-                        # Agent A phát biểu
                         with st.spinner(f"Vòng {round_num}: [{agent_a['name']}] đang phát biểu..."):
                             prompt_a = f"""{agent_a['system_prompt']}\n\nLỊCH SỬ:\n{debate_history}\nNHIỆM VỤ: Lập luận hoặc bảo vệ quan điểm."""
                             cfg_a = genai.types.GenerateContentConfig(temperature=agent_a.get("temperature", 0.2))
@@ -240,7 +233,6 @@ with tab1:
                             st.markdown(f"### 🔵 Vòng {round_num}: {agent_a['name']}")
                             st.write(text_a)
 
-                        # Agent B phản biện
                         with st.spinner(f"Vòng {round_num}: [{agent_b['name']}] đang phản biện..."):
                             prompt_b = f"""{agent_b['system_prompt']}\n\nLỊCH SỬ:\n{debate_history}\nNHIỆM VỤ: Chỉ ra điểm yếu/rủi ro trong ý kiến của {agent_a['name']}."""
                             cfg_b = genai.types.GenerateContentConfig(temperature=agent_b.get("temperature", 0.2))
