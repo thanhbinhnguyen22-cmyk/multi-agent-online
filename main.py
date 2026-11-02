@@ -35,8 +35,8 @@ def save_to_db(mode, query, result):
     conn.commit()
     conn.close()
 
-# --- HÀM GỌI API VỚI CƠ CHẾ TỰ ĐỘNG THỬ LẠI (AUTO-RETRY) ---
-def call_gemini_with_retry(client, model, contents, config=None, max_retries=3, initial_delay=2):
+# --- HÀM GỌI API VỚI CƠ CHẾ AUTO-RETRY NÂNG CAO (5 LẦN THỬ, THỜI GIAN CHỜ LỚN HƠN) ---
+def call_gemini_with_retry(client, model, contents, config=None, max_retries=5, initial_delay=3):
     for attempt in range(max_retries):
         try:
             if config:
@@ -45,9 +45,9 @@ def call_gemini_with_retry(client, model, contents, config=None, max_retries=3, 
                 return client.models.generate_content(model=model, contents=contents)
         except Exception as e:
             error_str = str(e)
-            # Kiểm tra nếu là lỗi quá tải (503, UNAVAILABLE, 429) và chưa hết số lần thử
+            # Kiểm tra lỗi quá tải (503, UNAVAILABLE, 429) và chưa hết số lần thử
             if ("503" in error_str or "UNAVAILABLE" in error_str or "429" in error_str or "RESOURCE_EXHAUSTED" in error_str) and attempt < max_retries - 1:
-                sleep_time = initial_delay * (2 ** attempt)  # Tăng dần thời gian chờ: 2s, 4s, 8s...
+                sleep_time = initial_delay * (2 ** attempt)  # Lần 1: 3s, Lần 2: 6s, Lần 3: 12s, Lần 4: 24s...
                 st.warning(f"⚠️ Máy chủ đang quá tải (Lỗi 503). Hệ thống đang tự động thử lại lần {attempt + 1}/{max_retries} sau {sleep_time} giây...")
                 time.sleep(sleep_time)
             else:
@@ -56,7 +56,7 @@ def call_gemini_with_retry(client, model, contents, config=None, max_retries=3, 
 # --- CẤU HÌNH GIAO DIỆN TRANG WEB ---
 st.set_page_config(page_title="Pro Multi-Agent System", page_icon="🤖", layout="wide")
 st.title("🤖 Hệ thống Đa Tác Nhân Chuyên Sắc (Pro Multi-Agent)")
-st.write("Hệ thống phối hợp AI thông minh tích hợp Kho tri thức động, Kiểm duyệt thủ công và Cơ chế Auto-Retry chống quá tải.")
+st.write("Hệ thống phối hợp AI thông minh tích hợp Kho tri thức động, Kiểm duyệt thủ công và Cơ chế Auto-Retry chống quá tải mở rộng.")
 
 # Khởi tạo dữ liệu cấu hình Agent trong Session State
 if "agents_config" not in st.session_state:
@@ -193,7 +193,6 @@ with tab1:
                             
                             contents = [uploaded_file, prompt] if (uploaded_file and idx == len(selected_pipeline)-1) else prompt
                             
-                            # Gọi API thông qua hàm Auto-Retry an toàn
                             res = call_gemini_with_retry(client, agent_info['model'], contents, config_param)
                             agent_output = res.text
 
@@ -248,7 +247,6 @@ with tab1:
                             prompt_a = f"""{agent_a['system_prompt']}\n\nLỊCH SỬ:\n{debate_history}\nNHIỆM VỤ: Lập luận hoặc bảo vệ quan điểm."""
                             cfg_a = genai.types.GenerateContentConfig(temperature=agent_a.get("temperature", 0.2))
                             
-                            # Gọi API có auto-retry
                             res_a = call_gemini_with_retry(client, agent_a['model'], prompt_a, cfg_a)
                             text_a = res_a.text
                             
@@ -260,7 +258,6 @@ with tab1:
                             prompt_b = f"""{agent_b['system_prompt']}\n\nLỊCH SỬ:\n{debate_history}\nNHIỆM VỤ: Chỉ ra điểm yếu/rủi ro trong ý kiến của {agent_a['name']}."""
                             cfg_b = genai.types.GenerateContentConfig(temperature=agent_b.get("temperature", 0.2))
                             
-                            # Gọi API có auto-retry
                             res_b = call_gemini_with_retry(client, agent_b['model'], prompt_b, cfg_b)
                             text_b = res_b.text
                             
