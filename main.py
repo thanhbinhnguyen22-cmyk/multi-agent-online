@@ -35,7 +35,7 @@ def save_to_db(mode, query, result):
     conn.commit()
     conn.close()
 
-# --- HÀM GỌI API VỚI CƠ CHẾ AUTO-RETRY NÂNG CAO (5 LẦN THỬ, THỜI GIAN CHỜ LỚN HƠN) ---
+# --- HÀM GỌI API VỚI CƠ CHẾ AUTO-RETRY NÂNG CAO (5 LẦN THỬ) ---
 def call_gemini_with_retry(client, model, contents, config=None, max_retries=5, initial_delay=3):
     for attempt in range(max_retries):
         try:
@@ -45,10 +45,9 @@ def call_gemini_with_retry(client, model, contents, config=None, max_retries=5, 
                 return client.models.generate_content(model=model, contents=contents)
         except Exception as e:
             error_str = str(e)
-            # Kiểm tra lỗi quá tải (503, UNAVAILABLE, 429) và chưa hết số lần thử
             if ("503" in error_str or "UNAVAILABLE" in error_str or "429" in error_str or "RESOURCE_EXHAUSTED" in error_str) and attempt < max_retries - 1:
-                sleep_time = initial_delay * (2 ** attempt)  # Lần 1: 3s, Lần 2: 6s, Lần 3: 12s, Lần 4: 24s...
-                st.warning(f"⚠️ Máy chủ đang quá tải (Lỗi 503). Hệ thống đang tự động thử lại lần {attempt + 1}/{max_retries} sau {sleep_time} giây...")
+                sleep_time = initial_delay * (2 ** attempt)
+                st.warning(f"⚠️ Máy chủ đang quá tải (Model: {model}). Đang tự động thử lại lần {attempt + 1}/{max_retries} sau {sleep_time} giây...")
                 time.sleep(sleep_time)
             else:
                 raise e
@@ -56,7 +55,17 @@ def call_gemini_with_retry(client, model, contents, config=None, max_retries=5, 
 # --- CẤU HÌNH GIAO DIỆN TRANG WEB ---
 st.set_page_config(page_title="Pro Multi-Agent System", page_icon="🤖", layout="wide")
 st.title("🤖 Hệ thống Đa Tác Nhân Chuyên Sắc (Pro Multi-Agent)")
-st.write("Hệ thống phối hợp AI thông minh tích hợp Kho tri thức động, Kiểm duyệt thủ công và Cơ chế Auto-Retry chống quá tải mở rộng.")
+st.write("Hệ thống phối hợp AI thông minh tích hợp Đa mô hình, Kho tri thức động và Auto-Retry chống quá tải.")
+
+# Danh sách các mô hình hỗ trợ (đã bao gồm dòng 3.8, 2.5, 2.0 và 1.5)
+AVAILABLE_MODELS = [
+    "gemini-3.8-flash",
+    "gemini-3.8-pro",
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash"
+]
 
 # Khởi tạo dữ liệu cấu hình Agent trong Session State
 if "agents_config" not in st.session_state:
@@ -92,7 +101,7 @@ if selected_action == "➕ Thêm Agent mới":
     st.sidebar.subheader("Thêm Tác Nhân Mới")
     new_key = st.sidebar.text_input("Mã định danh (Key không dấu):")
     new_name = st.sidebar.text_input("Tên hiển thị:")
-    new_model = st.sidebar.selectbox("Chọn Model", ["gemini-3.8-flash", "gemini-3.8-pro"])
+    new_model = st.sidebar.selectbox("Chọn Model", AVAILABLE_MODELS)
     new_temp = st.sidebar.slider("Temperature (Độ sáng tạo)", 0.0, 1.0, 0.2)
     new_prompt = st.sidebar.text_area("System Prompt:")
     
@@ -112,8 +121,13 @@ else:
     if agent_keys:
         chosen_agent = st.sidebar.selectbox("Chọn Agent để chỉnh sửa", agent_keys)
         current_data = st.session_state.agents_config["agents"][chosen_agent]
+        
         edit_name = st.sidebar.text_input("Tên hiển thị", value=current_data["name"])
-        edit_model = st.sidebar.selectbox("Chọn Model", ["gemini-3.8-flash", "gemini-3.8-pro"], index=0 if current_data["model"]=="gemini-3.8-flash" else 1)
+        
+        current_model = current_data.get("model", "gemini-3.8-flash")
+        model_index = AVAILABLE_MODELS.index(current_model) if current_model in AVAILABLE_MODELS else 0
+        edit_model = st.sidebar.selectbox("Chọn Model", AVAILABLE_MODELS, index=model_index)
+        
         edit_temp = st.sidebar.slider("Temperature", 0.0, 1.0, float(current_data.get("temperature", 0.2)))
         edit_prompt = st.sidebar.text_area("System Prompt", value=current_data["system_prompt"])
         
@@ -290,4 +304,3 @@ with tab2:
             with st.expander(f"[{row[1]}] Chế độ: {row[2]} — Yêu cầu: {row[3][:50]}..."):
                 st.write(f"**Yêu cầu gốc:** {row[3]}")
                 st.markdown("---")
-                st.markdown(row[4])
