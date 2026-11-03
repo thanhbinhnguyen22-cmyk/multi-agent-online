@@ -49,22 +49,37 @@ def extract_text_from_pdf(pdf_path):
         text = f"[Lỗi đọc file PDF: {e}]"
     return text
 
-# --- HÀM LẤY DANH SÁCH MODEL CHAT AN TOÀN TỪ GROQ ---
+# --- HÀM LẤY VÀ SẮP XẾP MODEL ƯU TIÊN CHO TIẾNG VIỆT ---
 def get_available_groq_models(api_key):
     try:
         client = Groq(api_key=api_key)
         models_response = client.models.list()
-        # Lọc bỏ các mô hình không phải chat (embed, whisper, guard, classifier, v.v.)
-        excluded_keywords = ["embed", "whisper", "guard", "classifier", "rerank"]
+        
+        # Loại bỏ các mô hình không phù hợp cho chat
+        excluded_keywords = ["embed", "whisper", "guard", "classifier", "rerank", "audio", "speech"]
         model_ids = [
             m.id for m in models_response.data 
             if not any(keyword in m.id.lower() for keyword in excluded_keywords)
         ]
+        
+        # Sắp xếp ưu tiên mô hình tốt cho tiếng Việt lên hàng đầu (Qwen, GPT-oss)
+        def model_priority(model_name):
+            name = model_name.lower()
+            if "qwen" in name:
+                return 0
+            if "gpt-oss-120b" in name:
+                return 1
+            if "gpt-oss-20b" in name:
+                return 2
+            return 5 # Đẩy các mô hình Ả Rập/Anh chuyên biệt xuống cuối
+            
+        model_ids.sort(key=model_priority)
+        
         if model_ids:
             return model_ids
     except Exception:
         pass
-    return ["llama-3.1-8b-instant", "mixtral-8x7b-32768"]
+    return ["qwen/qwen3.8-27b", "openai/gpt-oss-120b"]
 
 # --- HÀM GỌI GROQ API VỚI CƠ CHẾ AUTO-RETRY + JITTER ---
 def call_groq_with_retry(client, model, system_prompt, user_content, temperature=0.2, max_retries=5, initial_delay=2):
@@ -92,41 +107,40 @@ def call_groq_with_retry(client, model, system_prompt, user_content, temperature
 # --- CẤU HÌNH GIAO DIỆN TRANG WEB ---
 st.set_page_config(page_title="Pro Multi-Agent System (Groq)", page_icon="⚡", layout="wide")
 st.title("⚡ Hệ thống Đa Tác Nhân Siêu Tốc (Sử dụng Groq API)")
-st.write("Hệ thống phối hợp AI siêu tốc tích hợp hạ tầng Groq LPU, Kho tri thức động và Tự động quét model chat khả dụng.")
+st.write("Hệ thống phối hợp AI siêu tốc tích hợp hạ tầng Groq LPU, Kho tri thức động và Tự động tối ưu mô hình tiếng Việt.")
 
-# Lấy API Key từ Secrets để check danh sách model thực tế
+# Lấy danh sách model đã được sắp xếp ưu tiên
 api_key_check = st.secrets.get("GROQ_API_KEY") if "GROQ_API_KEY" in st.secrets else os.getenv("GROQ_API_KEY")
-AVAILABLE_MODELS = get_available_groq_models(api_key_check) if api_key_check else ["llama-3.1-8b-instant"]
+AVAILABLE_MODELS = get_available_groq_models(api_key_check) if api_key_check else ["qwen/qwen3.8-27b"]
 
-# Đảm bảo model mặc định an toàn tuyệt đối
-default_model = AVAILABLE_MODELS[0] if AVAILABLE_MODELS else "llama-3.1-8b-instant"
+default_model = AVAILABLE_MODELS[0] if AVAILABLE_MODELS else "qwen/qwen3.8-27b"
 
-# Khởi tạo cấu hình Agent (Sử dụng version v6 để làm sạch hoàn toàn cache cũ)
-if "agents_config_v6" not in st.session_state:
-    st.session_state.agents_config_v6 = {
+# Khởi tạo cấu hình Agent (Sử dụng version v7 để làm sạch hoàn toàn cache cũ)
+if "agents_config_v7" not in st.session_state:
+    st.session_state.agents_config_v7 = {
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
                 "model": default_model,
                 "temperature": 0.3,
-                "system_prompt": "Bạn là chuyên gia hạ tầng CNTT. Hãy phân tích kỹ thuật, phần cứng, mạng và giải pháp công nghệ một cách chuẩn xác."
+                "system_prompt": "Bạn là chuyên gia hạ tầng CNTT. Hãy phân tích kỹ thuật, phần cứng, mạng và giải pháp công nghệ một cách chuẩn xác bằng tiếng Việt."
             },
             "security_expert": {
                 "name": "Chuyên gia ATTT",
                 "model": default_model,
                 "temperature": 0.1,
-                "system_prompt": "Bạn là chuyên gia An toàn thông tin. Hãy kiểm tra các rủi ro bảo mật, lỗ hổng hệ thống và mức độ tuân thủ tiêu chuẩn kỹ thuật."
+                "system_prompt": "Bạn là chuyên gia An toàn thông tin. Hãy kiểm tra các rủi ro bảo mật, lỗ hổng hệ thống và mức độ tuân thủ tiêu chuẩn kỹ thuật bằng tiếng Việt."
             },
             "legal_expert": {
                 "name": "Chuyên gia Pháp chế",
                 "model": default_model,
                 "temperature": 0.1,
-                "system_prompt": "Bạn là chuyên gia luật công nghệ thông tin và văn bản quy phạm pháp luật hành chính nhà nước. Hãy rà soát tính hợp pháp và quy định liên quan."
+                "system_prompt": "Bạn là chuyên gia luật công nghệ thông tin và văn bản quy phạm pháp luật hành chính nhà nước. Hãy rà soát tính hợp pháp và quy định liên quan bằng tiếng Việt."
             }
         }
     }
 
-active_agents = st.session_state.agents_config_v6["agents"]
+active_agents = st.session_state.agents_config_v7["agents"]
 
 # ================= THANH SIDEBAR: QUẢN LÝ & CÀI ĐẶT =================
 st.sidebar.header("⚙️ Quản lý Đội ngũ Agents")
@@ -137,7 +151,7 @@ if selected_action == "➕ Thêm Agent mới":
     st.sidebar.subheader("Thêm Tác Nhân Mới")
     new_key = st.sidebar.text_input("Mã định danh (Key không dấu):")
     new_name = st.sidebar.text_input("Tên hiển thị:")
-    new_model = st.sidebar.selectbox("Chọn Model Chat", AVAILABLE_MODELS)
+    new_model = st.sidebar.selectbox("Chọn Model (Đã ưu tiên tiếng Việt)", AVAILABLE_MODELS)
     new_temp = st.sidebar.slider("Temperature (Độ sáng tạo)", 0.0, 1.0, 0.2)
     new_prompt = st.sidebar.text_area("System Prompt:")
     
@@ -197,7 +211,7 @@ tab1, tab2 = st.tabs(["🚀 Chạy Hệ Thống", "📜 Lịch sử Phiên làm 
 with tab1:
     mode = st.radio("Chọn phương thức hoạt động:", ["🔄 Chuỗi Pipeline tuần tự", "⚔️ Chế độ Tranh luận Vòng lặp (Debate)"])
     st.divider()
-    user_query = st.text_area("Nhập yêu cầu hoặc vấn đề cần xử lý:", placeholder="Ví dụ: Đánh giá phương án triển khai hệ thống...")
+    user_query = st.text_area("Nhập yêu cầu hoặc vấn đề cần xử lý bằng tiếng Việt:", placeholder="Ví dụ: Đánh giá phương án triển khai hệ thống...")
 
     if mode.startswith("🔄"):
         selected_pipeline = st.multiselect(
@@ -297,7 +311,7 @@ with tab1:
                         round_num = r + 1
                         
                         with st.spinner(f"Vòng {round_num}: [{agent_a['name']}] đang phát biểu..."):
-                            prompt_a = f"LỊCH SỬ TRANH LUẬN:\n{debate_history}\n\nNHIỆM VỤ: Lập luận hoặc bảo vệ quan điểm của bạn về chủ đề trên."
+                            prompt_a = f"LỊCH SỬ TRANH LUẬN:\n{debate_history}\n\nNHIỆM VỤ: Lập luận hoặc bảo vệ quan điểm của bạn về chủ đề trên bằng tiếng Việt."
                             text_a = call_groq_with_retry(
                                 client=client,
                                 model=agent_a['model'],
@@ -311,7 +325,7 @@ with tab1:
                             st.write(text_a)
 
                         with st.spinner(f"Vòng {round_num}: [{agent_b['name']}] đang phản biện..."):
-                            prompt_b = f"LỊCH SỬ TRANH LUẬN:\n{debate_history}\n\nNHIỆM VỤ: Chỉ ra điểm yếu, rủi ro hoặc phản bác ý kiến vừa rồi của {agent_a['name']}."
+                            prompt_b = f"LỊCH SỬ TRANH LUẬN:\n{debate_history}\n\nNHIỆM VỤ: Chỉ ra điểm yếu, rủi ro hoặc phản bác ý kiến vừa rồi của {agent_a['name']} bằng tiếng Việt."
                             text_b = call_groq_with_retry(
                                 client=client,
                                 model=agent_b['model'],
