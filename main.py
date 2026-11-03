@@ -49,8 +49,17 @@ def extract_text_from_pdf(pdf_path):
         text = f"[Lỗi đọc file PDF: {e}]"
     return text
 
-# --- HÀM GỌI GROQ API VỚI CƠ CHẾ AUTO-RETRY + JITTER ---
+# Danh sách mô hình chuẩn duy nhất được phép chạy trên Groq
+AVAILABLE_MODELS = [
+    "llama-3.1-8b-instant",
+    "mixtral-8x7b-32768"
+]
+
+# --- HÀM GỌI GROQ API CÓ CƠ CHẾ ÉP MODEL AN TOÀN (CHỐNG LỖI CACHE) ---
 def call_groq_with_retry(client, model, system_prompt, user_content, temperature=0.2, max_retries=5, initial_delay=2):
+    # Ép buộc kiểm tra: nếu model truyền vào không nằm trong danh sách hợp lệ, tự động gán về model an toàn
+    safe_model = model if model in AVAILABLE_MODELS else "llama-3.1-8b-instant"
+    
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_content}
@@ -58,7 +67,7 @@ def call_groq_with_retry(client, model, system_prompt, user_content, temperature
     for attempt in range(max_retries):
         try:
             response = client.chat.completions.create(
-                model=model,
+                model=safe_model,
                 messages=messages,
                 temperature=temperature
             )
@@ -77,15 +86,9 @@ st.set_page_config(page_title="Pro Multi-Agent System (Groq)", page_icon="⚡", 
 st.title("⚡ Hệ thống Đa Tác Nhân Siêu Tốc (Sử dụng Groq API)")
 st.write("Hệ thống phối hợp AI siêu tốc tích hợp Llama trên hạ tầng Groq LPU, Kho tri thức động và Tự động lưu lịch sử.")
 
-# Danh sách mô hình an toàn tuyệt đối cho mọi tài khoản Groq
-AVAILABLE_MODELS = [
-    "llama-3.1-8b-instant",
-    "mixtral-8x7b-32768"
-]
-
-# Khởi tạo dữ liệu cấu hình Agent và tự động vá lỗi model cũ trong Session State
-if "agents_config" not in st.session_state:
-    st.session_state.agents_config = {
+# Sử dụng key phiên bản v4 hoàn toàn mới để vô hiệu hóa hoàn toàn cache cũ
+if "agents_config_v4" not in st.session_state:
+    st.session_state.agents_config_v4 = {
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
@@ -107,15 +110,12 @@ if "agents_config" not in st.session_state:
             }
         }
     }
-else:
-    # Tự động chuyển các model cũ/không hợp lệ về model chuẩn đang hoạt động
-    for agent_key in st.session_state.agents_config["agents"]:
-        if st.session_state.agents_config["agents"][agent_key]["model"] not in AVAILABLE_MODELS:
-            st.session_state.agents_config["agents"][agent_key]["model"] = "llama-3.1-8b-instant"
+
+active_agents = st.session_state.agents_config_v4["agents"]
 
 # ================= THANH SIDEBAR: QUẢN LÝ & CÀI ĐẶT =================
 st.sidebar.header("⚙️ Quản lý Đội ngũ Agents")
-agent_keys = list(st.session_state.agents_config["agents"].keys())
+agent_keys = list(active_agents.keys())
 selected_action = st.sidebar.selectbox("Hành động", ["✏️ Chỉnh sửa / Sửa tham số", "➕ Thêm Agent mới"])
 
 if selected_action == "➕ Thêm Agent mới":
@@ -128,10 +128,10 @@ if selected_action == "➕ Thêm Agent mới":
     
     if st.sidebar.button("Lưu Agent Mới"):
         if new_key and new_name and new_prompt:
-            if new_key in st.session_state.agents_config["agents"]:
+            if new_key in active_agents:
                 st.sidebar.error("Mã định danh đã tồn tại!")
             else:
-                st.session_state.agents_config["agents"][new_key] = {
+                active_agents[new_key] = {
                     "name": new_name, "model": new_model, "temperature": new_temp, "system_prompt": new_prompt
                 }
                 st.sidebar.success(f"Đã thêm agent: {new_name}!")
@@ -141,12 +141,14 @@ if selected_action == "➕ Thêm Agent mới":
 else:
     if agent_keys:
         chosen_agent = st.sidebar.selectbox("Chọn Agent để chỉnh sửa", agent_keys)
-        current_data = st.session_state.agents_config["agents"][chosen_agent]
+        current_data = active_agents[chosen_agent]
         
         edit_name = st.sidebar.text_input("Tên hiển thị", value=current_data["name"])
         
         current_model = current_data.get("model", "llama-3.1-8b-instant")
-        model_index = AVAILABLE_MODELS.index(current_model) if current_model in AVAILABLE_MODELS else 0
+        if current_model not in AVAILABLE_MODELS:
+            current_model = "llama-3.1-8b-instant"
+        model_index = AVAILABLE_MODELS.index(current_model)
         edit_model = st.sidebar.selectbox("Chọn Model", AVAILABLE_MODELS, index=model_index)
         
         edit_temp = st.sidebar.slider("Temperature", 0.0, 1.0, float(current_data.get("temperature", 0.2)))
@@ -155,14 +157,14 @@ else:
         col_s1, col_s2 = st.sidebar.columns(2)
         with col_s1:
             if st.button("Cập nhật"):
-                st.session_state.agents_config["agents"][chosen_agent] = {
+                active_agents[chosen_agent] = {
                     "name": edit_name, "model": edit_model, "temperature": edit_temp, "system_prompt": edit_prompt
                 }
                 st.success("Đã cập nhật!")
                 st.rerun()
         with col_s2:
             if st.button("Xóa", type="primary"):
-                del st.session_state.agents_config["agents"][chosen_agent]
+                del active_agents[chosen_agent]
                 st.success("Đã xóa!")
                 st.rerun()
 
@@ -175,7 +177,6 @@ st.sidebar.divider()
 enable_hitl = st.sidebar.checkbox("🛡️ Bật kiểm duyệt thủ công (Human-in-the-Loop)", value=False)
 
 # ================= GIAO DIỆN CHÍNH =================
-active_agents = st.session_state.agents_config["agents"]
 tab1, tab2 = st.tabs(["🚀 Chạy Hệ Thống", "📜 Lịch sử Phiên làm việc"])
 
 with tab1:
