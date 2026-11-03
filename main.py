@@ -55,14 +55,12 @@ def get_available_groq_models(api_key):
         client = Groq(api_key=api_key)
         models_response = client.models.list()
         
-        # Loại bỏ các mô hình không phù hợp cho chat
         excluded_keywords = ["embed", "whisper", "guard", "classifier", "rerank", "audio", "speech"]
         model_ids = [
             m.id for m in models_response.data 
             if not any(keyword in m.id.lower() for keyword in excluded_keywords)
         ]
         
-        # Sắp xếp ưu tiên mô hình tốt cho tiếng Việt lên hàng đầu (Qwen, GPT-oss)
         def model_priority(model_name):
             name = model_name.lower()
             if "qwen" in name:
@@ -71,7 +69,7 @@ def get_available_groq_models(api_key):
                 return 1
             if "gpt-oss-20b" in name:
                 return 2
-            return 5 # Đẩy các mô hình Ả Rập/Anh chuyên biệt xuống cuối
+            return 5
             
         model_ids.sort(key=model_priority)
         
@@ -97,9 +95,9 @@ def call_groq_with_retry(client, model, system_prompt, user_content, temperature
             return response.choices[0].message.content
         except Exception as e:
             error_str = str(e)
-            if ("429" in error_str or "503" in error_str or "rate_limit" in error_str.lower()) and attempt < max_retries - 1:
+            # Nếu gặp lỗi liên quan đến giới hạn tốc độ hoặc token (429, rate_limit, tokens)
+            if ("429" in error_str or "503" in error_str or "rate_limit" in error_str.lower() or "token" in error_str.lower()) and attempt < max_retries - 1:
                 sleep_time = (initial_delay * (2 ** attempt)) + random.uniform(0, 1)
-                st.warning(f"⚠️ Máy chủ Groq bận tạm thời. Đang thử lại lần {attempt + 1}/{max_retries} sau {sleep_time:.1f} giây...")
                 time.sleep(sleep_time)
             else:
                 raise e
@@ -107,17 +105,19 @@ def call_groq_with_retry(client, model, system_prompt, user_content, temperature
 # --- CẤU HÌNH GIAO DIỆN TRANG WEB ---
 st.set_page_config(page_title="Pro Multi-Agent System (Groq)", page_icon="⚡", layout="wide")
 st.title("⚡ Hệ thống Đa Tác Nhân Siêu Tốc (Sử dụng Groq API)")
-st.write("Hệ thống phối hợp AI siêu tốc tích hợp hạ tầng Groq LPU, Kho tri thức động và Tự động tối ưu mô hình tiếng Việt.")
+st.write("Hệ thống phối hợp AI siêu tốc tích hợp hạ tầng Groq LPU, quản lý lỗi tập trung và kho tri thức động.")
 
-# Lấy danh sách model đã được sắp xếp ưu tiên
+# Khởi tạo bộ nhớ lưu nhật ký lỗi riêng biệt trong Session State
+if "error_logs" not in st.session_state:
+    st.session_state.error_logs = []
+
 api_key_check = st.secrets.get("GROQ_API_KEY") if "GROQ_API_KEY" in st.secrets else os.getenv("GROQ_API_KEY")
 AVAILABLE_MODELS = get_available_groq_models(api_key_check) if api_key_check else ["qwen/qwen3.8-27b"]
 
 default_model = AVAILABLE_MODELS[0] if AVAILABLE_MODELS else "qwen/qwen3.8-27b"
 
-# Khởi tạo cấu hình Agent (Sử dụng version v7 để làm sạch hoàn toàn cache cũ)
-if "agents_config_v7" not in st.session_state:
-    st.session_state.agents_config_v7 = {
+if "agents_config_v8" not in st.session_state:
+    st.session_state.agents_config_v8 = {
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
@@ -140,7 +140,7 @@ if "agents_config_v7" not in st.session_state:
         }
     }
 
-active_agents = st.session_state.agents_config_v7["agents"]
+active_agents = st.session_state.agents_config_v8["agents"]
 
 # ================= THANH SIDEBAR: QUẢN LÝ & CÀI ĐẶT =================
 st.sidebar.header("⚙️ Quản lý Đội ngũ Agents")
@@ -151,7 +151,7 @@ if selected_action == "➕ Thêm Agent mới":
     st.sidebar.subheader("Thêm Tác Nhân Mới")
     new_key = st.sidebar.text_input("Mã định danh (Key không dấu):")
     new_name = st.sidebar.text_input("Tên hiển thị:")
-    new_model = st.sidebar.selectbox("Chọn Model (Đã ưu tiên tiếng Việt)", AVAILABLE_MODELS)
+    new_model = st.sidebar.selectbox("Chọn Model", AVAILABLE_MODELS)
     new_temp = st.sidebar.slider("Temperature (Độ sáng tạo)", 0.0, 1.0, 0.2)
     new_prompt = st.sidebar.text_area("System Prompt:")
     
@@ -205,6 +205,20 @@ selected_pdf = st.sidebar.selectbox("Chọn tài liệu tham khảo cho phiên n
 st.sidebar.divider()
 enable_hitl = st.sidebar.checkbox("🛡️ Bật kiểm duyệt thủ công (Human-in-the-Loop)", value=False)
 
+# ================= KHUNG QUẢN LÝ NHẬT KÝ LỖI & TOKEN (GỌN GÀNG) =================
+with st.expander(f"🛠️ Nhật ký lỗi & Trạng thái Token ({len(st.session_state.error_logs)} lỗi ghi nhận)", expanded=False):
+    if st.session_state.error_logs:
+        st.warning("Hệ thống đã tự động bắt các lỗi token/API bên dưới để tránh làm gián đoạn màn hình chính:")
+        for idx, log_item in enumerate(st.session_state.error_logs):
+            st.error(f"**[{log_item['time']}] Agent `{log_item['agent']}`:** {log_item['error']}")
+        if st.button("🗑️ Xóa sạch lịch sử lỗi"):
+            st.session_state.error_logs = []
+            st.rerun()
+    else:
+        st.info("✨ Chưa có lỗi token hoặc API nào phát sinh trong phiên làm việc này.")
+
+st.divider()
+
 # ================= GIAO DIỆN CHÍNH =================
 tab1, tab2 = st.tabs(["🚀 Chạy Hệ Thống", "📜 Lịch sử Phiên làm việc"])
 
@@ -243,37 +257,49 @@ with tab1:
 
                     for idx, agent_key in enumerate(selected_pipeline):
                         agent_info = active_agents[agent_key]
-                        with st.spinner(f"Bước {idx+1}: [{agent_info['name']}] đang phân tích..."):
-                            
-                            pdf_section = f"\nTÀI LIỆU THAM KHẢO:\n{pdf_content}\n" if (pdf_content and idx == len(selected_pipeline)-1) else ""
-                            
-                            prompt_content = f"""
-                            KẾT QUẢ / NGỮ CẢNH TỪ CÁC BƯỚC TRƯỚC:
-                            {accumulated_context if accumulated_context else "Bạn là người mở đầu chuỗi xử lý."}
-                            
-                            YÊU CẦU GỐC: {user_query}
-                            {pdf_section}
-                            """
-                            
-                            agent_output = call_groq_with_retry(
-                                client=client,
-                                model=agent_info['model'],
-                                system_prompt=agent_info['system_prompt'],
-                                user_content=prompt_content,
-                                temperature=agent_info.get("temperature", 0.2)
-                            )
-
                         st.subheader(f"Bước {idx+1}: {agent_info['name']}")
                         
+                        try:
+                            with st.spinner(f"Đang phân tích..."):
+                                pdf_section = f"\nTÀI LIỆU THAM KHẢO:\n{pdf_content}\n" if (pdf_content and idx == len(selected_pipeline)-1) else ""
+                                
+                                prompt_content = f"""
+                                KẾT QUẢ / NGỮ CẢNH TỪ CÁC BƯỚC TRƯỚC:
+                                {accumulated_context if accumulated_context else "Bạn là người mở đầu chuỗi xử lý."}
+                                
+                                YÊU CẦU GỐC: {user_query}
+                                {pdf_section}
+                                """
+                                
+                                agent_output = call_groq_with_retry(
+                                    client=client,
+                                    model=agent_info['model'],
+                                    system_prompt=agent_info['system_prompt'],
+                                    user_content=prompt_content,
+                                    temperature=agent_info.get("temperature", 0.2)
+                                )
+                        except Exception as e:
+                            # Bắt lỗi token/API gọn gàng, lưu vào log thay vì làm đỏ lòm màn hình
+                            err_msg = str(e)
+                            current_time = datetime.now().strftime("%H:%M:%S")
+                            st.session_state.error_logs.append({
+                                "time": current_time,
+                                "agent": agent_info['name'],
+                                "error": err_msg
+                            })
+                            agent_output = f"⚠️ *[Tác nhân tạm thời gặp sự cố xử lý token/API. Chi tiết đã được ghi nhận vào mục **Nhật ký lỗi & Trạng thái Token** ở phía trên.]*"
+                            st.warning(f"⚠️ {agent_info['name']} đã gặp sự cố giới hạn token hoặc phản hồi. Kiểm tra mục 'Nhật ký lỗi' để xem chi tiết.")
+
                         if enable_hitl:
                             agent_output = st.text_area(f"Kiểm duyệt/Sửa đổi kết quả của {agent_info['name']}:", value=agent_output, key=f"edit_{idx}")
 
                         st.write(agent_output)
                         accumulated_context += f"\n\n--- Ý kiến từ {agent_info['name']} ---\n{agent_output}"
                         final_report += f"## Bước {idx+1}: {agent_info['name']}\n{agent_output}\n\n"
+                        time.sleep(0.5)
 
                     save_to_db("Pipeline (Groq)", user_query, final_report)
-                    st.success("🎉 Hoàn tất chuỗi Pipeline và đã lưu lịch sử!")
+                    st.success("🎉 Hoàn tất chuỗi Pipeline và đã lưu lịch sử vào cơ sở dữ liệu!")
 
                     st.download_button(
                         label="📥 Tải xuống Báo cáo Tổng hợp (.md)",
@@ -310,36 +336,59 @@ with tab1:
                     for r in range(debate_rounds):
                         round_num = r + 1
                         
-                        with st.spinner(f"Vòng {round_num}: [{agent_a['name']}] đang phát biểu..."):
-                            prompt_a = f"LỊCH SỬ TRANH LUẬN:\n{debate_history}\n\nNHIỆM VỤ: Lập luận hoặc bảo vệ quan điểm của bạn về chủ đề trên bằng tiếng Việt."
-                            text_a = call_groq_with_retry(
-                                client=client,
-                                model=agent_a['model'],
-                                system_prompt=agent_a['system_prompt'],
-                                user_content=prompt_a,
-                                temperature=agent_a.get("temperature", 0.2)
-                            )
-                            
-                            debate_history += f"## Vòng {round_num} - {agent_a['name']}\n{text_a}\n\n"
-                            st.markdown(f"### 🔵 Vòng {round_num}: {agent_a['name']}")
-                            st.write(text_a)
+                        # --- Agent A ---
+                        st.markdown(f"### 🔵 Vòng {round_num}: {agent_a['name']}")
+                        try:
+                            with st.spinner(f"Đang phát biểu..."):
+                                prompt_a = f"LỊCH SỬ TRANH LUẬN:\n{debate_history}\n\nNHIỆM VỤ: Lập luận hoặc bảo vệ quan điểm của bạn về chủ đề trên bằng tiếng Việt."
+                                text_a = call_groq_with_retry(
+                                    client=client,
+                                    model=agent_a['model'],
+                                    system_prompt=agent_a['system_prompt'],
+                                    user_content=prompt_a,
+                                    temperature=agent_a.get("temperature", 0.2)
+                                )
+                        except Exception as e:
+                            err_msg = str(e)
+                            st.session_state.error_logs.append({
+                                "time": datetime.now().strftime("%H:%M:%S"),
+                                "agent": agent_a['name'],
+                                "error": err_msg
+                            })
+                            text_a = "⚠️ *[Lỗi xử lý token/API ở vòng này. Xem chi tiết tại Nhật ký lỗi.]*"
+                            st.warning(f"⚠️ {agent_a['name']} gặp lỗi token.")
 
-                        with st.spinner(f"Vòng {round_num}: [{agent_b['name']}] đang phản biện..."):
-                            prompt_b = f"LỊCH SỬ TRANH LUẬN:\n{debate_history}\n\nNHIỆM VỤ: Chỉ ra điểm yếu, rủi ro hoặc phản bác ý kiến vừa rồi của {agent_a['name']} bằng tiếng Việt."
-                            text_b = call_groq_with_retry(
-                                client=client,
-                                model=agent_b['model'],
-                                system_prompt=agent_b['system_prompt'],
-                                user_content=prompt_b,
-                                temperature=agent_b.get("temperature", 0.2)
-                            )
-                            
-                            debate_history += f"## Vòng {round_num} - {agent_b['name']} (Phản biện)\n{text_b}\n\n"
-                            st.markdown(f"### 🔴 Vòng {round_num}: {agent_b['name']} phản biện")
-                            st.write(text_b)
+                        debate_history += f"## Vòng {round_num} - {agent_a['name']}\n{text_a}\n\n"
+                        st.write(text_a)
+
+                        # --- Agent B ---
+                        st.markdown(f"### 🔴 Vòng {round_num}: {agent_b['name']} phản biện")
+                        try:
+                            with st.spinner(f"Đang phản biện..."):
+                                prompt_b = f"LỊCH SỬ TRANH LUẬN:\n{debate_history}\n\nNHIỆM VỤ: Chỉ ra điểm yếu, rủi ro hoặc phản bác ý kiến vừa rồi của {agent_a['name']} bằng tiếng Việt."
+                                text_b = call_groq_with_retry(
+                                    client=client,
+                                    model=agent_b['model'],
+                                    system_prompt=agent_b['system_prompt'],
+                                    user_content=prompt_b,
+                                    temperature=agent_b.get("temperature", 0.2)
+                                )
+                        except Exception as e:
+                            err_msg = str(e)
+                            st.session_state.error_logs.append({
+                                "time": datetime.now().strftime("%H:%M:%S"),
+                                "agent": agent_b['name'],
+                                "error": err_msg
+                            })
+                            text_b = "⚠️ *[Lỗi xử lý token/API ở vòng này. Xem chi tiết tại Nhật ký lỗi.]*"
+                            st.warning(f"⚠️ {agent_b['name']} gặp lỗi token.")
+
+                        debate_history += f"## Vòng {round_num} - {agent_b['name']} (Phản biện)\n{text_b}\n\n"
+                        st.write(text_b)
+                        time.sleep(0.5)
 
                     save_to_db("Debate (Groq)", user_query, debate_history)
-                    st.success("🏁 Cuộc tranh luận kết thúc và đã lưu lịch sử!")
+                    st.success("🏁 Cuộc tranh luận kết thúc và đã lưu lịch sử vào cơ sở dữ liệu!")
 
                     st.download_button(
                         label="📥 Tải xuống Biên bản Tranh luận (.md)",
