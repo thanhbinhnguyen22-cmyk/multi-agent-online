@@ -46,8 +46,59 @@ def extract_text_from_pdf(pdf_path):
             if t:
                 text += t + "\n"
     except Exception as e:
-        text = f"[Lỗi đọc file PDF: {e}]"
+        text = f"[Lỗi đọc file PDF {pdf_path}: {e}]"
     return text
+
+# --- HÀM Xây DỰNG CÂY THƯ MỤC KHO TRI THỨC ---
+def build_file_tree(base_dir):
+    tree = {}
+    if not os.path.exists(base_dir):
+        return tree
+    for entry in os.scandir(base_dir):
+        if entry.is_dir():
+            tree[entry.name] = build_file_tree(entry.path)
+        elif entry.is_file() and entry.name.lower().endswith(".pdf"):
+            tree[entry.name] = entry.path
+    return tree
+
+# --- HÀM HIỂN THỊ CÂY THƯ MỤC ĐỆ QUY TRÊN SIDEBAR ---
+def render_tree_selector(tree, path_prefix="Kho tri thức"):
+    selected_paths = []
+    if not tree:
+        st.sidebar.info("Chưa tìm thấy file PDF nào trong thư mục 'Kho tri thức'.")
+        return selected_paths
+
+    for name, content in tree.items():
+        current_path = os.path.join(path_prefix, name)
+        if isinstance(content, dict):
+            # Là Thư mục -> Dùng st.expander để có thể thu gọn/mở rộng
+            with st.sidebar.expander(f"📁 {name}", expanded=False):
+                # Checkbox chọn toàn bộ thư mục
+                select_all_folder = st.checkbox(f"Chọn tất cả trong '{name}'", key=f"chk_dir_{current_path}")
+                
+                # Đệ quy lấy file con bên trong
+                sub_selected = render_tree_selector(content, current_path)
+                
+                if select_all_folder:
+                    # Lấy toàn bộ đường dẫn file lá trong thư mục này
+                    def get_all_leaves(d):
+                        files = []
+                        for k, v in d.items():
+                            if isinstance(v, dict):
+                                files.extend(get_all_leaves(v))
+                            else:
+                                files.append(v)
+                        return files
+                    selected_paths.extend(get_all_leaves(content))
+                else:
+                    selected_paths.extend(sub_selected)
+        else:
+            # Là File PDF -> Checkbox chọn từng file
+            is_selected = st.checkbox(f"📄 {name}", key=f"chk_file_{content}", value=False)
+            if is_selected:
+                selected_paths.append(content)
+                
+    return list(set(selected_paths)) # Loại bỏ trùng lặp nếu có
 
 # --- HÀM LẤY VÀ SẮP XẾP MODEL ƯU TIÊN CHO TIẾNG VIỆT ---
 def get_available_groq_models(api_key):
@@ -95,7 +146,6 @@ def call_groq_with_retry(client, model, system_prompt, user_content, temperature
             return response.choices[0].message.content
         except Exception as e:
             error_str = str(e)
-            # Nếu gặp lỗi liên quan đến giới hạn tốc độ hoặc token (429, rate_limit, tokens)
             if ("429" in error_str or "503" in error_str or "rate_limit" in error_str.lower() or "token" in error_str.lower()) and attempt < max_retries - 1:
                 sleep_time = (initial_delay * (2 ** attempt)) + random.uniform(0, 1)
                 time.sleep(sleep_time)
@@ -105,9 +155,8 @@ def call_groq_with_retry(client, model, system_prompt, user_content, temperature
 # --- CẤU HÌNH GIAO DIỆN TRANG WEB ---
 st.set_page_config(page_title="Pro Multi-Agent System (Groq)", page_icon="⚡", layout="wide")
 st.title("⚡ Hệ thống Đa Tác Nhân Siêu Tốc (Sử dụng Groq API)")
-st.write("Hệ thống phối hợp AI siêu tốc tích hợp hạ tầng Groq LPU, quản lý lỗi tập trung và kho tri thức động.")
+st.write("Hệ thống phối hợp AI đa tác nhân tích hợp hạ tầng Groq LPU, Cây thư mục tri thức động và Quản lý lỗi tập trung.")
 
-# Khởi tạo bộ nhớ lưu nhật ký lỗi riêng biệt trong Session State
 if "error_logs" not in st.session_state:
     st.session_state.error_logs = []
 
@@ -116,8 +165,8 @@ AVAILABLE_MODELS = get_available_groq_models(api_key_check) if api_key_check els
 
 default_model = AVAILABLE_MODELS[0] if AVAILABLE_MODELS else "qwen/qwen3.8-27b"
 
-if "agents_config_v8" not in st.session_state:
-    st.session_state.agents_config_v8 = {
+if "agents_config_v9" not in st.session_state:
+    st.session_state.agents_config_v9 = {
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
@@ -140,7 +189,7 @@ if "agents_config_v8" not in st.session_state:
         }
     }
 
-active_agents = st.session_state.agents_config_v8["agents"]
+active_agents = st.session_state.agents_config_v9["agents"]
 
 # ================= THANH SIDEBAR: QUẢN LÝ & CÀI ĐẶT =================
 st.sidebar.header("⚙️ Quản lý Đội ngũ Agents")
@@ -198,24 +247,27 @@ else:
                 st.rerun()
 
 st.sidebar.divider()
-st.sidebar.header("📚 Kho Tri thức Động (PDF)")
-pdf_files = glob.glob("knowledge_base/**/*.pdf", recursive=True)
-selected_pdf = st.sidebar.selectbox("Chọn tài liệu tham khảo cho phiên này:", ["Không dùng tài liệu"] + pdf_files)
+st.sidebar.header("🌲 Kho Tri thức Động (Cây Thư Mục)")
+knowledge_tree = build_file_tree("Kho tri thức")
+selected_pdf_files = render_tree_selector(knowledge_tree)
+
+if selected_pdf_files:
+    st.sidebar.success(f"Đã chọn {len(selected_pdf_files)} tài liệu tham khảo.")
 
 st.sidebar.divider()
 enable_hitl = st.sidebar.checkbox("🛡️ Bật kiểm duyệt thủ công (Human-in-the-Loop)", value=False)
 
-# ================= KHUNG QUẢN LÝ NHẬT KÝ LỖI & TOKEN (GỌN GÀNG) =================
+# ================= KHUNG QUẢN LÝ NHẬT KÝ LỖI & TOKEN =================
 with st.expander(f"🛠️ Nhật ký lỗi & Trạng thái Token ({len(st.session_state.error_logs)} lỗi ghi nhận)", expanded=False):
     if st.session_state.error_logs:
-        st.warning("Hệ thống đã tự động bắt các lỗi token/API bên dưới để tránh làm gián đoạn màn hình chính:")
+        st.warning("Hệ thống đã bắt các lỗi token/API bên dưới:")
         for idx, log_item in enumerate(st.session_state.error_logs):
             st.error(f"**[{log_item['time']}] Agent `{log_item['agent']}`:** {log_item['error']}")
         if st.button("🗑️ Xóa sạch lịch sử lỗi"):
             st.session_state.error_logs = []
             st.rerun()
     else:
-        st.info("✨ Chưa có lỗi token hoặc API nào phát sinh trong phiên làm việc này.")
+        st.info("✨ Chưa có lỗi phát sinh trong phiên làm việc này.")
 
 st.divider()
 
@@ -247,10 +299,13 @@ with tab1:
                 else:
                     client = Groq(api_key=api_key)
                     
+                    # Trích xuất văn bản từ TẤT CẢ các file PDF đã chọn (hoặc chọn theo thư mục)
                     pdf_content = ""
-                    if selected_pdf != "Không dùng tài liệu" and os.path.exists(selected_pdf):
-                        with st.spinner(f"Đang trích xuất văn bản từ {selected_pdf}..."):
-                            pdf_content = extract_text_from_pdf(selected_pdf)
+                    if selected_pdf_files:
+                        with st.spinner(f"Đang trích xuất văn bản từ {len(selected_pdf_files)} tài liệu đã chọn..."):
+                            for f_path in selected_pdf_files:
+                                pdf_content += f"\n\n--- TÀI LIỆU: {os.path.basename(f_path)} ---\n"
+                                pdf_content += extract_text_from_pdf(f_path)
 
                     accumulated_context = ""
                     final_report = f"# BÁO CÁO PHỐI HỢP MULTI-AGENT (GROQ)\n\n**Yêu cầu:** {user_query}\n\n"
@@ -261,7 +316,7 @@ with tab1:
                         
                         try:
                             with st.spinner(f"Đang phân tích..."):
-                                pdf_section = f"\nTÀI LIỆU THAM KHẢO:\n{pdf_content}\n" if (pdf_content and idx == len(selected_pipeline)-1) else ""
+                                pdf_section = f"\n\nTÀI LIỆU THAM KHẢO:\n{pdf_content}\n" if (pdf_content and idx == len(selected_pipeline)-1) else ""
                                 
                                 prompt_content = f"""
                                 KẾT QUẢ / NGỮ CẢNH TỪ CÁC BƯỚC TRƯỚC:
@@ -279,7 +334,6 @@ with tab1:
                                     temperature=agent_info.get("temperature", 0.2)
                                 )
                         except Exception as e:
-                            # Bắt lỗi token/API gọn gàng, lưu vào log thay vì làm đỏ lòm màn hình
                             err_msg = str(e)
                             current_time = datetime.now().strftime("%H:%M:%S")
                             st.session_state.error_logs.append({
@@ -287,8 +341,8 @@ with tab1:
                                 "agent": agent_info['name'],
                                 "error": err_msg
                             })
-                            agent_output = f"⚠️ *[Tác nhân tạm thời gặp sự cố xử lý token/API. Chi tiết đã được ghi nhận vào mục **Nhật ký lỗi & Trạng thái Token** ở phía trên.]*"
-                            st.warning(f"⚠️ {agent_info['name']} đã gặp sự cố giới hạn token hoặc phản hồi. Kiểm tra mục 'Nhật ký lỗi' để xem chi tiết.")
+                            agent_output = f"⚠️ *[Tác nhân gặp sự cố token/API. Xem chi tiết tại Nhật ký lỗi.]*"
+                            st.warning(f"⚠️ {agent_info['name']} đã gặp sự cố. Kiểm tra mục 'Nhật ký lỗi' phía trên.")
 
                         if enable_hitl:
                             agent_output = st.text_area(f"Kiểm duyệt/Sửa đổi kết quả của {agent_info['name']}:", value=agent_output, key=f"edit_{idx}")
@@ -299,7 +353,7 @@ with tab1:
                         time.sleep(0.5)
 
                     save_to_db("Pipeline (Groq)", user_query, final_report)
-                    st.success("🎉 Hoàn tất chuỗi Pipeline và đã lưu lịch sử vào cơ sở dữ liệu!")
+                    st.success("🎉 Hoàn tất chuỗi Pipeline và đã lưu lịch sử!")
 
                     st.download_button(
                         label="📥 Tải xuống Báo cáo Tổng hợp (.md)",
@@ -356,7 +410,7 @@ with tab1:
                                 "error": err_msg
                             })
                             text_a = "⚠️ *[Lỗi xử lý token/API ở vòng này. Xem chi tiết tại Nhật ký lỗi.]*"
-                            st.warning(f"⚠️ {agent_a['name']} gặp lỗi token.")
+                            st.warning(f"⚠️ {agent_a['name']} gặp lỗi.")
 
                         debate_history += f"## Vòng {round_num} - {agent_a['name']}\n{text_a}\n\n"
                         st.write(text_a)
@@ -381,14 +435,14 @@ with tab1:
                                 "error": err_msg
                             })
                             text_b = "⚠️ *[Lỗi xử lý token/API ở vòng này. Xem chi tiết tại Nhật ký lỗi.]*"
-                            st.warning(f"⚠️ {agent_b['name']} gặp lỗi token.")
+                            st.warning(f"⚠️ {agent_b['name']} gặp lỗi.")
 
                         debate_history += f"## Vòng {round_num} - {agent_b['name']} (Phản biện)\n{text_b}\n\n"
                         st.write(text_b)
                         time.sleep(0.5)
 
                     save_to_db("Debate (Groq)", user_query, debate_history)
-                    st.success("🏁 Cuộc tranh luận kết thúc và đã lưu lịch sử vào cơ sở dữ liệu!")
+                    st.success("🏁 Cuộc tranh luận kết thúc và đã lưu lịch sử!")
 
                     st.download_button(
                         label="📥 Tải xuống Biên bản Tranh luận (.md)",
