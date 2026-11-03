@@ -102,7 +102,7 @@ def build_file_tree(base_dir):
         pass
     return tree
 
-# --- HÀM HIỂN THỊ CÂY THƯ MỤC ĐỆ QUY (LỒNG NHAU CHUẨN XÁC) ---
+# --- HÀM HIỂN THỊ CÂY THƯ MỤC ĐỆ QUY (CHECKBOX NẰM TRƯỚC TÊN THƯ MỤC) ---
 def render_tree_selector(tree, path_prefix="kho_tri_thuc"):
     selected_paths = []
     if not tree:
@@ -111,26 +111,28 @@ def render_tree_selector(tree, path_prefix="kho_tri_thuc"):
     for name, content in tree.items():
         current_path = os.path.join(path_prefix, name)
         if isinstance(content, dict):
-            # Mỗi thư mục là một st.sidebar.expander thu gọn, bấm vào mới mở ra chứa thư mục con hoặc file
-            with st.sidebar.expander("📁 " + name, expanded=False):
-                select_all_folder = st.checkbox("📁 Chọn tất cả trong '" + name + "'", key="chk_dir_" + current_path)
-                sub_selected = render_tree_selector(content, current_path)
-                
-                if select_all_folder:
-                    def get_all_leaves(d):
-                        files = []
-                        for k, v in d.items():
-                            if isinstance(v, dict):
-                                files.extend(get_all_leaves(v))
-                            else:
-                                files.append(v)
-                        return files
-                    selected_paths.extend(get_all_leaves(content))
-                else:
-                    selected_paths.extend(sub_selected)
+            # Tạo bố cục 2 cột trên sidebar: Cột nhỏ chứa checkbox chọn tất cả, cột lớn chứa expander tên thư mục
+            col1, col2 = st.sidebar.columns([0.15, 0.85])
+            with col1:
+                select_all_folder = st.checkbox("", key="chk_dir_" + current_path, label_visibility="collapsed")
+            with col2:
+                with st.expander("📁 " + name, expanded=False):
+                    sub_selected = render_tree_selector(content, current_path)
+            
+            if select_all_folder:
+                def get_all_leaves(d):
+                    files = []
+                    for k, v in d.items():
+                        if isinstance(v, dict):
+                            files.extend(get_all_leaves(v))
+                        else:
+                            files.append(v)
+                    return files
+                selected_paths.extend(get_all_leaves(content))
+            else:
+                selected_paths.extend(sub_selected)
         else:
-            # File PDF nằm bên trong thư mục lá cuối cùng
-            is_selected = st.checkbox("📄 " + name, key="chk_file_" + content, value=False)
+            is_selected = st.sidebar.checkbox("📄 " + name, key="chk_file_" + content, value=False)
             if is_selected:
                 selected_paths.append(content)
                 
@@ -201,8 +203,8 @@ AVAILABLE_MODELS = get_available_groq_models(api_key_check) if api_key_check els
 
 default_model = AVAILABLE_MODELS[0] if AVAILABLE_MODELS else "qwen/qwen3.8-27b"
 
-if "agents_config_v25" not in st.session_state:
-    st.session_state.agents_config_v25 = {
+if "agents_config_v27" not in st.session_state:
+    st.session_state.agents_config_v27 = {
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
@@ -225,7 +227,7 @@ if "agents_config_v25" not in st.session_state:
         }
     }
 
-active_agents = st.session_state.agents_config_v25["agents"]
+active_agents = st.session_state.agents_config_v27["agents"]
 
 # ================= THANH SIDEBAR: QUẢN LÝ & CÀI ĐẶT =================
 st.sidebar.header("⚙️ Quản lý Đội ngũ Agents")
