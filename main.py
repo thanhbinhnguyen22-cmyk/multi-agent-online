@@ -199,8 +199,8 @@ AVAILABLE_MODELS = get_available_groq_models(api_key_check) if api_key_check els
 
 default_model = AVAILABLE_MODELS[0] if AVAILABLE_MODELS else "qwen/qwen3.8-27b"
 
-if "agents_config_v17" not in st.session_state:
-    st.session_state.agents_config_v17 = {
+if "agents_config_v18" not in st.session_state:
+    st.session_state.agents_config_v18 = {
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
@@ -223,7 +223,7 @@ if "agents_config_v17" not in st.session_state:
         }
     }
 
-active_agents = st.session_state.agents_config_v17["agents"]
+active_agents = st.session_state.agents_config_v18["agents"]
 
 # ================= THANH SIDEBAR: QUẢN LÝ & CÀI ĐẶT =================
 st.sidebar.header("⚙️ Quản lý Đội ngũ Agents")
@@ -367,15 +367,11 @@ with tab1:
                             with st.spinner(f"Đang phân tích..."):
                                 pdf_section = f"\n\nTÀI LIỆU THAM KHẢO:\n{pdf_content}\n" if (pdf_content and idx == len(selected_pipeline)-1) else ""
                                 
+                                default_context_msg = "Bạn là người mở đầu chuỗi xử lý."
+                                current_context = accumulated_context if accumulated_context else default_context_msg
+                                
                                 prompt_content = f"""
                                 KẾT QUẢ / NGỮ CẢNH TỪ CÁC BƯỚC TRƯỚC:
-                                {accumulated_context if accumulated_context else "Bạn là người mở đầu chuỗi xử lý."}
+                                {current_context}
                                 
                                 YÊU CẦU GỐC: {user_query}
-                                {pdf_section}
-                                """
-                                
-                                agent_output = call_groq_with_retry(
-                                    client=client,
-                                    model=agent_info['model'],
-                                    system_prompt=
