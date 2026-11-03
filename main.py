@@ -1,11 +1,12 @@
 import os
-import json
 import sqlite3
 import glob
 import time
+import random
 from datetime import datetime
 import streamlit as st
-from google import genai
+from openai import OpenAI
+import pypdf
 
 # --- CẤU HÌNH CƠ SỞ DỮ LIỆU SQLITE (LƯU LỊCH SỬ) ---
 def init_db():
@@ -35,53 +36,74 @@ def save_to_db(mode, query, result):
     conn.commit()
     conn.close()
 
-# --- HÀM GỌI API VỚI CƠ CHẾ AUTO-RETRY NÂNG CAO (5 LẦN THỬ) ---
-def call_gemini_with_retry(client, model, contents, config=None, max_retries=5, initial_delay=3):
+# --- HÀM ĐỌC NỘI DUNG TỪ FILE PDF ---
+def extract_text_from_pdf(pdf_path):
+    text = ""
+    try:
+        reader = pypdf.PdfReader(pdf_path)
+        for page in reader.pages:
+            t = page.extract_text()
+            if t:
+                text += t + "\n"
+    except Exception as e:
+        text = f"[Lỗi đọc file PDF: {e}]"
+    return text
+
+# --- HÀM GỌI API OPENAI VỚI CƠ CHẾ AUTO-RETRY + JITTER ---
+def call_openai_with_retry(client, model, system_prompt, user_content, temperature=0.2, max_retries=5, initial_delay=3):
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_content}
+    ]
     for attempt in range(max_retries):
         try:
-            if config:
-                return client.models.generate_content(model=model, contents=contents, config=config)
-            else:
-                return client.models.generate_content(model=model, contents=contents)
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature
+            )
+            return response.choices[0].message.content
         except Exception as e:
             error_str = str(e)
-            if ("503" in error_str or "UNAVAILABLE" in error_str or "429" in error_str or "RESOURCE_EXHAUSTED" in error_str) and attempt < max_retries - 1:
-                sleep_time = initial_delay * (2 ** attempt)
-                st.warning(f"⚠️ Máy chủ đang quá tải (Model: {model}). Đang tự động thử lại lần {attempt + 1}/{max_retries} sau {sleep_time} giây...")
+            if ("429" in error_str or "500" in error_str or "503" in error_str or "rate_limit" in error_str.lower()) and attempt < max_retries - 1:
+                sleep_time = (initial_delay * (2 ** attempt)) + random.uniform(0, 2)
+                st.warning(f"⚠️ Máy chủ OpenAI đang bận. Đang tự động thử lại lần {attempt + 1}/{max_retries} sau {sleep_time:.1f} giây...")
                 time.sleep(sleep_time)
             else:
                 raise e
 
 # --- CẤU HÌNH GIAO DIỆN TRANG WEB ---
-st.set_page_config(page_title="Pro Multi-Agent System", page_icon="🤖", layout="wide")
-st.title("🤖 Hệ thống Đa Tác Nhân Chuyên Sắc (Pro Multi-Agent)")
-st.write("Hệ thống phối hợp AI thông minh tích hợp Đa mô hình chuẩn Gemini 3.8, Kho tri thức động và Auto-Retry chống quá tải.")
+st.set_page_config(page_title="Pro Multi-Agent System (OpenAI)", page_icon="🤖", layout="wide")
+st.title("🤖 Hệ thống Đa Tác Nhân (Sử dụng OpenAI / ChatGPT)")
+st.write("Hệ thống phối hợp AI thông minh tích hợp OpenAI ChatGPT, Kho tri thức động và Auto-Retry chống quá tải.")
 
-# Danh sách các mô hình khả dụng hiện tại
+# Danh sách các mô hình ChatGPT hỗ trợ
 AVAILABLE_MODELS = [
-    "gemini-3.8-flash",
-    "gemini-3.8-pro"
+    "gpt-4o",
+    "gpt-4o-mini",
+    "gpt-4-turbo",
+    "gpt-3.5-turbo"
 ]
 
-# Khởi tạo dữ liệu cấu hình Agent trong Session State (Mặc định dùng gemini-3.8-flash chuẩn)
+# Khởi tạo dữ liệu cấu hình Agent trong Session State
 if "agents_config" not in st.session_state:
     st.session_state.agents_config = {
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
-                "model": "gemini-3.8-flash",
+                "model": "gpt-4o-mini",
                 "temperature": 0.3,
                 "system_prompt": "Bạn là chuyên gia hạ tầng CNTT. Hãy phân tích kỹ thuật, phần cứng, mạng và giải pháp công nghệ một cách chuẩn xác."
             },
             "security_expert": {
                 "name": "Chuyên gia ATTT",
-                "model": "gemini-3.8-flash",
+                "model": "gpt-4o-mini",
                 "temperature": 0.1,
                 "system_prompt": "Bạn là chuyên gia An toàn thông tin. Hãy kiểm tra các rủi ro bảo mật, lỗ hổng hệ thống và mức độ tuân thủ tiêu chuẩn kỹ thuật."
             },
             "legal_expert": {
                 "name": "Chuyên gia Pháp chế",
-                "model": "gemini-3.8-flash",
+                "model": "gpt-4o-mini",
                 "temperature": 0.1,
                 "system_prompt": "Bạn là chuyên gia luật công nghệ thông tin và văn bản quy phạm pháp luật hành chính nhà nước. Hãy rà soát tính hợp pháp và quy định liên quan."
             }
@@ -120,7 +142,7 @@ else:
         
         edit_name = st.sidebar.text_input("Tên hiển thị", value=current_data["name"])
         
-        current_model = current_data.get("model", "gemini-3.8-flash")
+        current_model = current_data.get("model", "gpt-4o-mini")
         model_index = AVAILABLE_MODELS.index(current_model) if current_model in AVAILABLE_MODELS else 0
         edit_model = st.sidebar.selectbox("Chọn Model", AVAILABLE_MODELS, index=model_index)
         
@@ -172,39 +194,43 @@ with tab1:
             elif not selected_pipeline:
                 st.warning("Vui lòng chọn ít nhất một Agent!")
             else:
-                api_key = st.secrets.get("GEMINI_API_KEY") if "GEMINI_API_KEY" in st.secrets else os.getenv("GEMINI_API_KEY")
+                api_key = st.secrets.get("OPENAI_API_KEY") if "OPENAI_API_KEY" in st.secrets else os.getenv("OPENAI_API_KEY")
                 if not api_key:
-                    st.error("Chưa cấu hình GEMINI_API_KEY!")
+                    st.error("Chưa cấu hình OPENAI_API_KEY trong Secrets!")
                 else:
-                    client = genai.Client(api_key=api_key)
-                    uploaded_file = None
+                    client = OpenAI(api_key=api_key)
+                    
+                    # Đọc nội dung PDF nếu có chọn
+                    pdf_content = ""
                     if selected_pdf != "Không dùng tài liệu" and os.path.exists(selected_pdf):
-                        with st.spinner(f"Đang tải tài liệu {selected_pdf} lên hệ thống..."):
-                            uploaded_file = client.files.upload(file=selected_pdf)
+                        with st.spinner(f"Đang trích xuất nội dung từ {selected_pdf}..."):
+                            pdf_content = extract_text_from_pdf(selected_pdf)
 
                     accumulated_context = ""
-                    final_report = f"# BÁO CÁO PHỐI HỢP MULTI-AGENT\n\n**Yêu cầu:** {user_query}\n\n"
+                    final_report = f"# BÁO CÁO PHỐI HỢP MULTI-AGENT (OPENAI)\n\n**Yêu cầu:** {user_query}\n\n"
 
                     for idx, agent_key in enumerate(selected_pipeline):
                         agent_info = active_agents[agent_key]
                         with st.spinner(f"Bước {idx+1}: [{agent_info['name']}] đang phân tích..."):
-                            prompt = f"""
-                            {agent_info['system_prompt']}
                             
+                            # Đưa nội dung PDF vào prompt của agent cuối hoặc tất cả tùy ý
+                            pdf_section = f"\nTÀI LIỆU THAM KHẢO:\n{pdf_content}\n" if (pdf_content and idx == len(selected_pipeline)-1) else ""
+                            
+                            prompt_content = f"""
                             KẾT QUẢ / NGỮ CẢNH TỪ CÁC BƯỚC TRƯỚC:
-                            {accumulated_context if accumulated_context else "Bạn là người mở đầu."}
+                            {accumulated_context if accumulated_context else "Bạn là người mở đầu chuỗi xử lý."}
                             
                             YÊU CẦU GỐC: {user_query}
+                            {pdf_section}
                             """
                             
-                            config_param = genai.types.GenerateContentConfig(
+                            agent_output = call_openai_with_retry(
+                                client=client,
+                                model=agent_info['model'],
+                                system_prompt=agent_info['system_prompt'],
+                                user_content=prompt_content,
                                 temperature=agent_info.get("temperature", 0.2)
                             )
-                            
-                            contents = [uploaded_file, prompt] if (uploaded_file and idx == len(selected_pipeline)-1) else prompt
-                            
-                            res = call_gemini_with_retry(client, agent_info['model'], contents, config_param)
-                            agent_output = res.text
 
                         st.subheader(f"Bước {idx+1}: {agent_info['name']}")
                         
@@ -214,14 +240,16 @@ with tab1:
                         st.write(agent_output)
                         accumulated_context += f"\n\n--- Ý kiến từ {agent_info['name']} ---\n{agent_output}"
                         final_report += f"## Bước {idx+1}: {agent_info['name']}\n{agent_output}\n\n"
+                        
+                        time.sleep(1) # Nghỉ nhẹ giữa các agent
 
-                    save_to_db("Pipeline", user_query, final_report)
+                    save_to_db("Pipeline (OpenAI)", user_query, final_report)
                     st.success("🎉 Hoàn tất chuỗi Pipeline và đã lưu lịch sử!")
 
                     st.download_button(
                         label="📥 Tải xuống Báo cáo Tổng hợp (.md)",
                         data=final_report,
-                        file_name=f"multi_agent_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+                        file_name=f"openai_multi_agent_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
                         mime="text/markdown"
                     )
 
@@ -240,48 +268,56 @@ with tab1:
             elif agent_a_key == agent_b_key:
                 st.warning("Vui lòng chọn 2 Agent khác nhau!")
             else:
-                api_key = st.secrets.get("GEMINI_API_KEY") if "GEMINI_API_KEY" in st.secrets else os.getenv("GEMINI_API_KEY")
+                api_key = st.secrets.get("OPENAI_API_KEY") if "OPENAI_API_KEY" in st.secrets else os.getenv("OPENAI_API_KEY")
                 if not api_key:
-                    st.error("Chưa cấu hình GEMINI_API_KEY!")
+                    st.error("Chưa cấu hình OPENAI_API_KEY trong Secrets!")
                 else:
-                    client = genai.Client(api_key=api_key)
+                    client = OpenAI(api_key=api_key)
                     agent_a = active_agents[agent_a_key]
                     agent_b = active_agents[agent_b_key]
 
-                    debate_history = f"# BIÊN BẢN TRANH LUẬN ĐA TÁC NHÂN\n\n**Chủ đề:** {user_query}\n\n"
+                    debate_history = f"# BIÊN BẢN TRANH LUẬN ĐA TÁC NHÂN (OPENAI)\n\n**Chủ đề:** {user_query}\n\n"
 
                     for r in range(debate_rounds):
                         round_num = r + 1
                         
                         with st.spinner(f"Vòng {round_num}: [{agent_a['name']}] đang phát biểu..."):
-                            prompt_a = f"""{agent_a['system_prompt']}\n\nLỊCH SỬ:\n{debate_history}\nNHIỆM VỤ: Lập luận hoặc bảo vệ quan điểm."""
-                            cfg_a = genai.types.GenerateContentConfig(temperature=agent_a.get("temperature", 0.2))
-                            
-                            res_a = call_gemini_with_retry(client, agent_a['model'], prompt_a, cfg_a)
-                            text_a = res_a.text
+                            prompt_a = f"LỊCH SỬ TRANH LUẬN:\n{debate_history}\n\nNHIỆM VỤ: Lập luận hoặc bảo vệ quan điểm của bạn về chủ đề trên."
+                            text_a = call_openai_with_retry(
+                                client=client,
+                                model=agent_a['model'],
+                                system_prompt=agent_a['system_prompt'],
+                                user_content=prompt_a,
+                                temperature=agent_a.get("temperature", 0.2)
+                            )
                             
                             debate_history += f"## Vòng {round_num} - {agent_a['name']}\n{text_a}\n\n"
                             st.markdown(f"### 🔵 Vòng {round_num}: {agent_a['name']}")
                             st.write(text_a)
 
                         with st.spinner(f"Vòng {round_num}: [{agent_b['name']}] đang phản biện..."):
-                            prompt_b = f"""{agent_b['system_prompt']}\n\nLỊCH SỬ:\n{debate_history}\nNHIỆM VỤ: Chỉ ra điểm yếu/rủi ro trong ý kiến của {agent_a['name']}."""
-                            cfg_b = genai.types.GenerateContentConfig(temperature=agent_b.get("temperature", 0.2))
-                            
-                            res_b = call_gemini_with_retry(client, agent_b['model'], prompt_b, cfg_b)
-                            text_b = res_b.text
+                            prompt_b = f"LỊCH SỬ TRANH LUẬN:\n{debate_history}\n\nNHIỆM VỤ: Chỉ ra điểm yếu, rủi ro hoặc phản bác ý kiến vừa rồi của {agent_a['name']}."
+                            text_b = call_openai_with_retry(
+                                client=client,
+                                model=agent_b['model'],
+                                system_prompt=agent_b['system_prompt'],
+                                user_content=prompt_b,
+                                temperature=agent_b.get("temperature", 0.2)
+                            )
                             
                             debate_history += f"## Vòng {round_num} - {agent_b['name']} (Phản biện)\n{text_b}\n\n"
                             st.markdown(f"### 🔴 Vòng {round_num}: {agent_b['name']} phản biện")
                             st.write(text_b)
+                            
+                        time.sleep(1)
 
-                    save_to_db("Debate", user_query, debate_history)
+                    save_to_db("Debate (OpenAI)", user_query, debate_history)
                     st.success("🏁 Cuộc tranh luận kết thúc và đã lưu lịch sử!")
 
                     st.download_button(
                         label="📥 Tải xuống Biên bản Tranh luận (.md)",
                         data=debate_history,
-                        file_name=f"debate_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+                        file_name=f"openai_debate_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
                         mime="text/markdown"
                     )
 
