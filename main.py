@@ -102,8 +102,8 @@ def build_file_tree(base_dir):
         pass
     return tree
 
-# --- HÀM HIỂN THỊ CÂY THƯ MỤC ĐỆ QUY (CHUẨN THU GỌN VÀ BAO ĐỰNG FILE) ---
-def render_tree_selector(tree, path_prefix="kho_tri_thuc", parent_is_expander=False):
+# --- HÀM HIỂN THỊ CÂY THƯ MỤC ĐỆ QUY (LỒNG NHAU CHUẨN XÁC) ---
+def render_tree_selector(tree, path_prefix="kho_tri_thuc"):
     selected_paths = []
     if not tree:
         return selected_paths
@@ -111,9 +111,10 @@ def render_tree_selector(tree, path_prefix="kho_tri_thuc", parent_is_expander=Fa
     for name, content in tree.items():
         current_path = os.path.join(path_prefix, name)
         if isinstance(content, dict):
+            # Mỗi thư mục là một st.sidebar.expander thu gọn, bấm vào mới mở ra chứa thư mục con hoặc file
             with st.sidebar.expander("📁 " + name, expanded=False):
                 select_all_folder = st.checkbox("📁 Chọn tất cả trong '" + name + "'", key="chk_dir_" + current_path)
-                sub_selected = render_tree_selector(content, current_path, parent_is_expander=True)
+                sub_selected = render_tree_selector(content, current_path)
                 
                 if select_all_folder:
                     def get_all_leaves(d):
@@ -128,12 +129,8 @@ def render_tree_selector(tree, path_prefix="kho_tri_thuc", parent_is_expander=Fa
                 else:
                     selected_paths.extend(sub_selected)
         else:
-            # File PDF nằm trong thư mục con sẽ dùng st.checkbox (nằm trong expander)
-            if parent_is_expander:
-                is_selected = st.checkbox("📄 " + name, key="chk_file_" + content, value=False)
-            else:
-                is_selected = st.sidebar.checkbox("📄 " + name, key="chk_file_" + content, value=False)
-                
+            # File PDF nằm bên trong thư mục lá cuối cùng
+            is_selected = st.checkbox("📄 " + name, key="chk_file_" + content, value=False)
             if is_selected:
                 selected_paths.append(content)
                 
@@ -204,8 +201,8 @@ AVAILABLE_MODELS = get_available_groq_models(api_key_check) if api_key_check els
 
 default_model = AVAILABLE_MODELS[0] if AVAILABLE_MODELS else "qwen/qwen3.8-27b"
 
-if "agents_config_v23" not in st.session_state:
-    st.session_state.agents_config_v23 = {
+if "agents_config_v25" not in st.session_state:
+    st.session_state.agents_config_v25 = {
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
@@ -228,7 +225,7 @@ if "agents_config_v23" not in st.session_state:
         }
     }
 
-active_agents = st.session_state.agents_config_v23["agents"]
+active_agents = st.session_state.agents_config_v25["agents"]
 
 # ================= THANH SIDEBAR: QUẢN LÝ & CÀI ĐẶT =================
 st.sidebar.header("⚙️ Quản lý Đội ngũ Agents")
@@ -304,7 +301,7 @@ if search_keyword:
         st.sidebar.info("Không tìm thấy file phù hợp.")
 else:
     knowledge_tree = build_file_tree(actual_kb_dir)
-    selected_pdf_files = render_tree_selector(knowledge_tree, path_prefix=actual_kb_dir, parent_is_expander=False)
+    selected_pdf_files = render_tree_selector(knowledge_tree, path_prefix=actual_kb_dir)
 
 if selected_pdf_files:
     st.sidebar.success("Đã chọn " + str(len(selected_pdf_files)) + " tài liệu tham khảo.")
