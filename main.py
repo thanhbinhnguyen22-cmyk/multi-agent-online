@@ -50,14 +50,13 @@ def extract_text_from_pdf(pdf_path):
         text = f"[Lỗi đọc file PDF {pdf_path}: {e}]"
     return text
 
-# --- HÀM TÌM KIẾM THƯ MỤC KHO TRI THỨC (HỖ TRỢ CẢ KHÔNG DẤU VÀ CÓ DẤU) ---
+# --- HÀM TÌM KIẾM THƯ MỤC KHO TRI THỨC (HỖ TRỢ KHÔNG DẤU) ---
 def get_knowledge_base_path():
     possible_names = ["kho_tri_thuc", "kho tri thuc", "Kho tri thuc", "knowledge_base", "Kho tri thức"]
     for name in possible_names:
         if os.path.exists(name) and os.path.isdir(name):
             return name
             
-    # Tự động quét các thư mục ở gốc nếu đặt tên khác
     try:
         for entry in os.scandir("."):
             if entry.is_dir() and not entry.name.startswith("."):
@@ -92,7 +91,6 @@ def render_tree_selector(tree, path_prefix="kho_tri_thuc"):
     for name, content in tree.items():
         current_path = os.path.join(path_prefix, name)
         if isinstance(content, dict):
-            # Thư mục: hiển thị dạng expander có thể thu gọn/mở rộng
             with st.sidebar.expander(f"📁 {name}", expanded=True):
                 select_all_folder = st.checkbox(f"📁 Chọn tất cả trong '{name}'", key=f"chk_dir_{current_path}")
                 sub_selected = render_tree_selector(content, current_path)
@@ -110,7 +108,6 @@ def render_tree_selector(tree, path_prefix="kho_tri_thuc"):
                 else:
                     selected_paths.extend(sub_selected)
         else:
-            # File PDF: hiển thị checkbox chọn từng file lẻ
             is_selected = st.sidebar.checkbox(f"📄 {name}", key=f"chk_file_{content}", value=False)
             if is_selected:
                 selected_paths.append(content)
@@ -182,8 +179,8 @@ AVAILABLE_MODELS = get_available_groq_models(api_key_check) if api_key_check els
 
 default_model = AVAILABLE_MODELS[0] if AVAILABLE_MODELS else "qwen/qwen3.8-27b"
 
-if "agents_config_v12" not in st.session_state:
-    st.session_state.agents_config_v12 = {
+if "agents_config_v13" not in st.session_state:
+    st.session_state.agents_config_v13 = {
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
@@ -206,7 +203,7 @@ if "agents_config_v12" not in st.session_state:
         }
     }
 
-active_agents = st.session_state.agents_config_v12["agents"]
+active_agents = st.session_state.agents_config_v13["agents"]
 
 # ================= THANH SIDEBAR: QUẢN LÝ & CÀI ĐẶT =================
 st.sidebar.header("⚙️ Quản lý Đội ngũ Agents")
@@ -425,3 +422,65 @@ with tab1:
                         except Exception as e:
                             err_msg = str(e)
                             st.session_state.error_logs.append({
+                                "time": datetime.now().strftime("%H:%M:%S"),
+                                "agent": agent_a['name'],
+                                "error": err_msg
+                            })
+                            text_a = "⚠️ *[Lỗi xử lý token/API ở vòng này. Xem chi tiết tại Nhật ký lỗi.]*"
+                            st.warning(f"⚠️ {agent_a['name']} gặp lỗi.")
+
+                        debate_history += f"## Vòng {round_num} - {agent_a['name']}\n{text_a}\n\n"
+                        st.write(text_a)
+
+                        # --- Agent B ---
+                        st.markdown(f"### 🔴 Vòng {round_num}: {agent_b['name']} phản biện")
+                        try:
+                            with st.spinner(f"Đang phản biện..."):
+                                prompt_b = f"LỊCH SỬ TRANH LUẬN:\n{debate_history}\n\nNHIỆM VỤ: Chỉ ra điểm yếu, rủi ro hoặc phản bác ý kiến vừa rồi của {agent_a['name']} bằng tiếng Việt."
+                                text_b = call_groq_with_retry(
+                                    client=client,
+                                    model=agent_b['model'],
+                                    system_prompt=agent_b['system_prompt'],
+                                    user_content=prompt_b,
+                                    temperature=agent_b.get("temperature", 0.2)
+                                )
+                        except Exception as e:
+                            err_msg = str(e)
+                            st.session_state.error_logs.append({
+                                "time": datetime.now().strftime("%H:%M:%S"),
+                                "agent": agent_b['name'],
+                                "error": err_msg
+                            })
+                            text_b = "⚠️ *[Lỗi xử lý token/API ở vòng này. Xem chi tiết tại Nhật ký lỗi.]*"
+                            st.warning(f"⚠️ {agent_b['name']} gặp lỗi.")
+
+                        debate_history += f"## Vòng {round_num} - {agent_b['name']} (Phản biện)\n{text_b}\n\n"
+                        st.write(text_b)
+                        time.sleep(0.5)
+
+                    save_to_db("Debate (Groq)", user_query, debate_history)
+                    st.success("🏁 Cuộc tranh luận kết thúc và đã lưu lịch sử!")
+
+                    st.download_button(
+                        label="📥 Tải xuống Biên bản Tranh luận (.md)",
+                        data=debate_history,
+                        file_name=f"groq_debate_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+                        mime="text/markdown"
+                    )
+
+with tab2:
+    st.subheader("📜 Lịch sử các phiên làm việc trước đây")
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, timestamp, mode, query, result FROM history ORDER BY id DESC")
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        st.info("Chưa có lịch sử phiên làm việc nào.")
+    else:
+        for row in rows:
+            with st.expander(f"[{row[1]}] Chế độ: {row[2]} — Yêu cầu: {row[3][:50]}..."):
+                st.write(f"**Yêu cầu gốc:** {row[3]}")
+                st.markdown("---")
+                st.markdown(row[4])
