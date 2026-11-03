@@ -49,17 +49,21 @@ def extract_text_from_pdf(pdf_path):
         text = f"[Lỗi đọc file PDF: {e}]"
     return text
 
-# Danh sách mô hình chuẩn duy nhất được phép chạy trên Groq
-AVAILABLE_MODELS = [
-    "llama-3.1-8b-instant",
-    "mixtral-8x7b-32768"
-]
+# --- HÀM LẤY DANH SÁCH MODEL TRỰC TIẾP TỪ TÀI KHOẢN GROQ ---
+def get_available_groq_models(api_key):
+    try:
+        client = Groq(api_key=api_key)
+        models_response = client.models.list()
+        # Lọc lấy các model dạng chat/llm
+        model_ids = [m.id for m in models_response.data if "embed" not in m.id and "whisper" not in m.id]
+        if model_ids:
+            return model_ids
+    except Exception:
+        pass
+    return ["llama-3.1-8b-instant", "mixtral-8x7b-32768"]
 
-# --- HÀM GỌI GROQ API CÓ CƠ CHẾ ÉP MODEL AN TOÀN (CHỐNG LỖI CACHE) ---
+# --- HÀM GỌI GROQ API VỚI CƠ CHẾ AUTO-RETRY + JITTER ---
 def call_groq_with_retry(client, model, system_prompt, user_content, temperature=0.2, max_retries=5, initial_delay=2):
-    # Ép buộc kiểm tra: nếu model truyền vào không nằm trong danh sách hợp lệ, tự động gán về model an toàn
-    safe_model = model if model in AVAILABLE_MODELS else "llama-3.1-8b-instant"
-    
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_content}
@@ -67,7 +71,7 @@ def call_groq_with_retry(client, model, system_prompt, user_content, temperature
     for attempt in range(max_retries):
         try:
             response = client.chat.completions.create(
-                model=safe_model,
+                model=model,
                 messages=messages,
                 temperature=temperature
             )
@@ -84,34 +88,39 @@ def call_groq_with_retry(client, model, system_prompt, user_content, temperature
 # --- CẤU HÌNH GIAO DIỆN TRANG WEB ---
 st.set_page_config(page_title="Pro Multi-Agent System (Groq)", page_icon="⚡", layout="wide")
 st.title("⚡ Hệ thống Đa Tác Nhân Siêu Tốc (Sử dụng Groq API)")
-st.write("Hệ thống phối hợp AI siêu tốc tích hợp Llama trên hạ tầng Groq LPU, Kho tri thức động và Tự động lưu lịch sử.")
+st.write("Hệ thống phối hợp AI siêu tốc tích hợp hạ tầng Groq LPU, Kho tri thức động và Tự động quét model khả dụng.")
 
-# Sử dụng key phiên bản v4 hoàn toàn mới để vô hiệu hóa hoàn toàn cache cũ
-if "agents_config_v4" not in st.session_state:
-    st.session_state.agents_config_v4 = {
+# Lấy API Key từ Secrets để check danh sách model thực tế
+api_key_check = st.secrets.get("GROQ_API_KEY") if "GROQ_API_KEY" in st.secrets else os.getenv("GROQ_API_KEY")
+AVAILABLE_MODELS = get_available_groq_models(api_key_check) if api_key_check else ["llama-3.1-8b-instant"]
+
+# Khởi tạo cấu hình Agent
+if "agents_config_v5" not in st.session_state:
+    default_model = AVAILABLE_MODELS[0] if AVAILABLE_MODELS else "llama-3.1-8b-instant"
+    st.session_state.agents_config_v5 = {
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
-                "model": "llama-3.1-8b-instant",
+                "model": default_model,
                 "temperature": 0.3,
                 "system_prompt": "Bạn là chuyên gia hạ tầng CNTT. Hãy phân tích kỹ thuật, phần cứng, mạng và giải pháp công nghệ một cách chuẩn xác."
             },
             "security_expert": {
                 "name": "Chuyên gia ATTT",
-                "model": "llama-3.1-8b-instant",
+                "model": default_model,
                 "temperature": 0.1,
                 "system_prompt": "Bạn là chuyên gia An toàn thông tin. Hãy kiểm tra các rủi ro bảo mật, lỗ hổng hệ thống và mức độ tuân thủ tiêu chuẩn kỹ thuật."
             },
             "legal_expert": {
                 "name": "Chuyên gia Pháp chế",
-                "model": "llama-3.1-8b-instant",
+                "model": default_model,
                 "temperature": 0.1,
                 "system_prompt": "Bạn là chuyên gia luật công nghệ thông tin và văn bản quy phạm pháp luật hành chính nhà nước. Hãy rà soát tính hợp pháp và quy định liên quan."
             }
         }
     }
 
-active_agents = st.session_state.agents_config_v4["agents"]
+active_agents = st.session_state.agents_config_v5["agents"]
 
 # ================= THANH SIDEBAR: QUẢN LÝ & CÀI ĐẶT =================
 st.sidebar.header("⚙️ Quản lý Đội ngũ Agents")
@@ -122,7 +131,7 @@ if selected_action == "➕ Thêm Agent mới":
     st.sidebar.subheader("Thêm Tác Nhân Mới")
     new_key = st.sidebar.text_input("Mã định danh (Key không dấu):")
     new_name = st.sidebar.text_input("Tên hiển thị:")
-    new_model = st.sidebar.selectbox("Chọn Model", AVAILABLE_MODELS)
+    new_model = st.sidebar.selectbox("Chọn Model (Lấy trực tiếp từ tài khoản Groq)", AVAILABLE_MODELS)
     new_temp = st.sidebar.slider("Temperature (Độ sáng tạo)", 0.0, 1.0, 0.2)
     new_prompt = st.sidebar.text_area("System Prompt:")
     
@@ -145,10 +154,10 @@ else:
         
         edit_name = st.sidebar.text_input("Tên hiển thị", value=current_data["name"])
         
-        current_model = current_data.get("model", "llama-3.1-8b-instant")
+        current_model = current_data.get("model", AVAILABLE_MODELS[0])
         if current_model not in AVAILABLE_MODELS:
-            current_model = "llama-3.1-8b-instant"
-        model_index = AVAILABLE_MODELS.index(current_model)
+            current_model = AVAILABLE_MODELS[0]
+        model_index = AVAILABLE_MODELS.index(current_model) if current_model in AVAILABLE_MODELS else 0
         edit_model = st.sidebar.selectbox("Chọn Model", AVAILABLE_MODELS, index=model_index)
         
         edit_temp = st.sidebar.slider("Temperature", 0.0, 1.0, float(current_data.get("temperature", 0.2)))
