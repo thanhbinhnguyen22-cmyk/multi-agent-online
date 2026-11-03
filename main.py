@@ -111,8 +111,8 @@ def render_tree_selector(tree, path_prefix="kho_tri_thuc"):
     for name, content in tree.items():
         current_path = os.path.join(path_prefix, name)
         if isinstance(content, dict):
-            with st.sidebar.expander(f"📁 {name}", expanded=False):
-                select_all_folder = st.checkbox(f"📁 Chọn tất cả trong '{name}'", key=f"chk_dir_{current_path}")
+            with st.sidebar.expander("📁 " + name, expanded=False):
+                select_all_folder = st.checkbox("📁 Chọn tất cả trong '" + name + "'", key="chk_dir_" + current_path)
                 sub_selected = render_tree_selector(content, current_path)
                 
                 if select_all_folder:
@@ -128,7 +128,7 @@ def render_tree_selector(tree, path_prefix="kho_tri_thuc"):
                 else:
                     selected_paths.extend(sub_selected)
         else:
-            is_selected = st.sidebar.checkbox(f"📄 {name}", key=f"chk_file_{content}", value=False)
+            is_selected = st.sidebar.checkbox("📄 " + name, key="chk_file_" + content, value=False)
             if is_selected:
                 selected_paths.append(content)
                 
@@ -199,8 +199,8 @@ AVAILABLE_MODELS = get_available_groq_models(api_key_check) if api_key_check els
 
 default_model = AVAILABLE_MODELS[0] if AVAILABLE_MODELS else "qwen/qwen3.8-27b"
 
-if "agents_config_v20" not in st.session_state:
-    st.session_state.agents_config_v20 = {
+if "agents_config_v21" not in st.session_state:
+    st.session_state.agents_config_v21 = {
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
@@ -223,7 +223,7 @@ if "agents_config_v20" not in st.session_state:
         }
     }
 
-active_agents = st.session_state.agents_config_v20["agents"]
+active_agents = st.session_state.agents_config_v21["agents"]
 
 # ================= THANH SIDEBAR: QUẢN LÝ & CÀI ĐẶT =================
 st.sidebar.header("⚙️ Quản lý Đội ngũ Agents")
@@ -246,7 +246,7 @@ if selected_action == "➕ Thêm Agent mới":
                 active_agents[new_key] = {
                     "name": new_name, "model": new_model, "temperature": new_temp, "system_prompt": new_prompt
                 }
-                st.sidebar.success(f"Đã thêm agent: {new_name}!")
+                st.sidebar.success("Đã thêm agent: " + new_name + "!")
                 st.rerun()
         else:
             st.sidebar.error("Vui lòng điền đủ thông tin!")
@@ -290,10 +290,10 @@ selected_pdf_files = []
 if search_keyword:
     all_pdfs = get_all_pdf_paths(actual_kb_dir)
     matched_pdfs = [p for p in all_pdfs if search_keyword.lower() in os.path.basename(p).lower()]
-    st.sidebar.markdown(f"**Kết quả tìm kiếm ({len(matched_pdfs)}):**")
+    st.sidebar.markdown("**Kết quả tìm kiếm (" + str(len(matched_pdfs)) + "):**")
     if matched_pdfs:
         for p in matched_pdfs:
-            if st.sidebar.checkbox(f"📄 {os.path.basename(p)}", key=f"search_{p}", value=False):
+            if st.sidebar.checkbox("📄 " + os.path.basename(p), key="search_" + p, value=False):
                 selected_pdf_files.append(p)
     else:
         st.sidebar.info("Không tìm thấy file phù hợp.")
@@ -302,17 +302,17 @@ else:
     selected_pdf_files = render_tree_selector(knowledge_tree, path_prefix=actual_kb_dir)
 
 if selected_pdf_files:
-    st.sidebar.success(f"Đã chọn {len(selected_pdf_files)} tài liệu tham khảo.")
+    st.sidebar.success("Đã chọn " + str(len(selected_pdf_files)) + " tài liệu tham khảo.")
 
 st.sidebar.divider()
 enable_hitl = st.sidebar.checkbox("🛡️ Bật kiểm duyệt thủ công (Human-in-the-Loop)", value=False)
 
 # ================= KHUNG QUẢN LÝ NHẬT KÝ LỖI & TOKEN =================
-with st.expander(f"🛠️ Nhật ký lỗi & Trạng thái Token ({len(st.session_state.error_logs)} lỗi ghi nhận)", expanded=False):
+with st.expander("🛠️ Nhật ký lỗi & Trạng thái Token (" + str(len(st.session_state.error_logs)) + " lỗi ghi nhận)", expanded=False):
     if st.session_state.error_logs:
         st.warning("Hệ thống đã bắt các lỗi token/API bên dưới:")
         for idx, log_item in enumerate(st.session_state.error_logs):
-            st.error(f"**[{log_item['time']}] Agent `{log_item['agent']}`:** {log_item['error']}")
+            st.error("**[" + log_item['time'] + "] Agent `" + log_item['agent'] + "`:** " + log_item['error'])
         if st.button("🗑️ Xóa sạch lịch sử lỗi"):
             st.session_state.error_logs = []
             st.rerun()
@@ -351,21 +351,21 @@ with tab1:
                     
                     pdf_content = ""
                     if selected_pdf_files:
-                        with st.spinner(f"Đang trích xuất văn bản từ {len(selected_pdf_files)} tài liệu đã chọn..."):
+                        with st.spinner("Đang trích xuất văn bản từ " + str(len(selected_pdf_files)) + " tài liệu đã chọn..."):
                             for f_path in selected_pdf_files:
-                                pdf_content += f"\n\n--- TÀI LIỆU: {os.path.basename(f_path)} ---\n"
+                                pdf_content += "\n\n--- TÀI LIỆU: " + os.path.basename(f_path) + " ---\n"
                                 pdf_content += extract_text_from_pdf(f_path)
 
                     accumulated_context = ""
-                    final_report = f"# BÁO CÁO PHỐI HỢP MULTI-AGENT (GROQ)\n\n**Yêu cầu:** {user_query}\n\n"
+                    final_report = "# BÁO CÁO PHỐI HỢP MULTI-AGENT (GROQ)\n\n**Yêu cầu:** " + user_query + "\n\n"
 
                     for idx, agent_key in enumerate(selected_pipeline):
                         agent_info = active_agents[agent_key]
-                        st.subheader(f"Bước {idx+1}: {agent_info['name']}")
+                        st.subheader("Bước " + str(idx+1) + ": " + agent_info['name'])
                         
                         try:
-                            with st.spinner(f"Đang phân tích..."):
-                                pdf_section = f"\n\nTÀI LIỆU THAM KHẢO:\n{pdf_content}\n" if (pdf_content and idx == len(selected_pipeline)-1) else ""
+                            with st.spinner("Đang phân tích..."):
+                                pdf_section = "\n\nTÀI LIỆU THAM KHẢO:\n" + pdf_content + "\n" if (pdf_content and idx == len(selected_pipeline)-1) else ""
                                 current_context = accumulated_context if accumulated_context else "Bạn là người mở đầu chuỗi xử lý."
                                 
                                 prompt_content = (
@@ -390,15 +390,15 @@ with tab1:
                                 "agent": agent_info['name'],
                                 "error": err_msg
                             })
-                            agent_output = f"⚠️ *[Tác nhân gặp sự cố token/API. Xem chi tiết tại Nhật ký lỗi.]*"
-                            st.warning(f"⚠️ {agent_info['name']} đã gặp sự cố. Kiểm tra mục 'Nhật ký lỗi' phía trên.")
+                            agent_output = "⚠️ *[Tác nhân gặp sự cố token/API. Xem chi tiết tại Nhật ký lỗi.]*"
+                            st.warning("⚠️ " + agent_info['name'] + " đã gặp sự cố. Kiểm tra mục 'Nhật ký lỗi' phía trên.")
 
                         if enable_hitl:
-                            agent_output = st.text_area(f"Kiểm duyệt/Sửa đổi kết quả của {agent_info['name']}:", value=agent_output, key=f"edit_{idx}")
+                            agent_output = st.text_area("Kiểm duyệt/Sửa đổi kết quả của " + agent_info['name'] + ":", value=agent_output, key="edit_" + str(idx))
 
                         st.write(agent_output)
-                        accumulated_context += f"\n\n--- Ý kiến từ {agent_info['name']} ---\n{agent_output}"
-                        final_report += f"## Bước {idx+1}: {agent_info['name']}\n{agent_output}\n\n"
+                        accumulated_context += "\n\n--- Ý kiến từ " + agent_info['name'] + " ---\n" + agent_output
+                        final_report += "## Bước " + str(idx+1) + ": " + agent_info['name'] + "\n" + agent_output + "\n\n"
                         time.sleep(0.5)
 
                     save_to_db("Pipeline (Groq)", user_query, final_report)
@@ -407,70 +407,4 @@ with tab1:
                     st.download_button(
                         label="📥 Tải xuống Báo cáo Tổng hợp (.md)",
                         data=final_report,
-                        file_name=f"groq_multi_agent_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
-                        mime="text/markdown"
-                    )
-
-    else:
-        col_d1, col_d2 = st.columns(2)
-        with col_d1:
-            agent_a_key = st.selectbox("Agent mở đầu", agent_keys, index=0)
-        with col_d2:
-            agent_b_key = st.selectbox("Agent phản biện", agent_keys, index=min(1, len(agent_keys)-1))
-            
-        debate_rounds = st.slider("Số vòng tranh luận qua lại", min_value=1, max_value=3, value=2)
-
-        if st.button("⚔️ Bắt đầu Cuộc Tranh Luận", type="primary"):
-            if not user_query:
-                st.warning("Vui lòng nhập chủ đề tranh luận!")
-            elif agent_a_key == agent_b_key:
-                st.warning("Vui lòng chọn 2 Agent khác nhau!")
-            else:
-                api_key = st.secrets.get("GROQ_API_KEY") if "GROQ_API_KEY" in st.secrets else os.getenv("GROQ_API_KEY")
-                if not api_key:
-                    st.error("Chưa cấu hình GROQ_API_KEY trong Secrets!")
-                else:
-                    client = Groq(api_key=api_key)
-                    agent_a = active_agents[agent_a_key]
-                    agent_b = active_agents[agent_b_key]
-
-                    debate_history = f"# BIÊN BẢN TRANH LUẬN ĐA TÁC NHÂN (GROQ)\n\n**Chủ đề:** {user_query}\n\n"
-
-                    for r in range(debate_rounds):
-                        round_num = r + 1
-                        
-                        # --- Agent A ---
-                        st.markdown(f"### 🔵 Vòng {round_num}: {agent_a['name']}")
-                        try:
-                            with st.spinner(f"Đang phát biểu..."):
-                                prompt_a = "LỊCH SỬ TRANH LUẬN:\n" + debate_history + "\n\nNHIỆM VỤ: Lập luận hoặc bảo vệ quan điểm của bạn về chủ đề trên bằng tiếng Việt."
-                                text_a = call_groq_with_retry(
-                                    client=client,
-                                    model=agent_a['model'],
-                                    system_prompt=agent_a['system_prompt'],
-                                    user_content=prompt_a,
-                                    temperature=agent_a.get("temperature", 0.2)
-                                )
-                        except Exception as e:
-                            err_msg = str(e)
-                            st.session_state.error_logs.append({
-                                "time": datetime.now().strftime("%H:%M:%S"),
-                                "agent": agent_a['name'],
-                                "error": err_msg
-                            })
-                            text_a = "⚠️ *[Lỗi xử lý token/API ở vòng này. Xem chi tiết tại Nhật ký lỗi.]*"
-                            st.warning(f"⚠️ {agent_a['name']} gặp lỗi.")
-
-                        debate_history += f"## Vòng {round_num} - {agent_a['name']}\n{text_a}\n\n"
-                        st.write(text_a)
-
-                        # --- Agent B ---
-                        st.markdown(f"### 🔴 Vòng {round_num}: {agent_b['name']} phản biện")
-                        try:
-                            with st.spinner(f"Đang phản biện..."):
-                                prompt_b = "LỊCH SỬ TRANH LUẬN:\n" + debate_history + "\n\nNHIỆM VỤ: Chỉ ra điểm yếu, rủi ro hoặc phản bác ý kiến vừa rồi của " + agent_a['name'] + " bằng tiếng Việt."
-                                text_b = call_groq_with_retry(
-                                    client=client,
-                                    model=agent_b['model'],
-                                    system_prompt=agent_b['system_prompt'],
-                                    user_content=
+                        file_name="groq_multi_agent_report_" + datetime.now().strftime('%Y%m%
