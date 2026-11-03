@@ -5,7 +5,7 @@ import time
 import random
 from datetime import datetime
 import streamlit as st
-from openai import OpenAI
+from groq import Groq
 import pypdf
 
 # --- CẤU HÌNH CƠ SỞ DỮ LIỆU SQLITE (LƯU LỊCH SỬ) ---
@@ -49,8 +49,8 @@ def extract_text_from_pdf(pdf_path):
         text = f"[Lỗi đọc file PDF: {e}]"
     return text
 
-# --- HÀM GỌI API OPENAI VỚI CƠ CHẾ AUTO-RETRY + JITTER ---
-def call_openai_with_retry(client, model, system_prompt, user_content, temperature=0.2, max_retries=5, initial_delay=3):
+# --- HÀM GỌI GROQ API VỚI CƠ CHẾ AUTO-RETRY + JITTER ---
+def call_groq_with_retry(client, model, system_prompt, user_content, temperature=0.2, max_retries=5, initial_delay=2):
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_content}
@@ -65,24 +65,23 @@ def call_openai_with_retry(client, model, system_prompt, user_content, temperatu
             return response.choices[0].message.content
         except Exception as e:
             error_str = str(e)
-            if ("429" in error_str or "500" in error_str or "503" in error_str or "rate_limit" in error_str.lower()) and attempt < max_retries - 1:
-                sleep_time = (initial_delay * (2 ** attempt)) + random.uniform(0, 2)
-                st.warning(f"⚠️ Máy chủ OpenAI đang bận. Đang tự động thử lại lần {attempt + 1}/{max_retries} sau {sleep_time:.1f} giây...")
+            if ("429" in error_str or "503" in error_str or "rate_limit" in error_str.lower()) and attempt < max_retries - 1:
+                sleep_time = (initial_delay * (2 ** attempt)) + random.uniform(0, 1)
+                st.warning(f"⚠️ Máy chủ Groq bận tạm thời. Đang thử lại lần {attempt + 1}/{max_retries} sau {sleep_time:.1f} giây...")
                 time.sleep(sleep_time)
             else:
                 raise e
 
 # --- CẤU HÌNH GIAO DIỆN TRANG WEB ---
-st.set_page_config(page_title="Pro Multi-Agent System (OpenAI)", page_icon="🤖", layout="wide")
-st.title("🤖 Hệ thống Đa Tác Nhân (Sử dụng OpenAI / ChatGPT)")
-st.write("Hệ thống phối hợp AI thông minh tích hợp OpenAI ChatGPT, Kho tri thức động và Auto-Retry chống quá tải.")
+st.set_page_config(page_title="Pro Multi-Agent System (Groq)", page_icon="⚡", layout="wide")
+st.title("⚡ Hệ thống Đa Tác Nhân Siêu Tốc (Sử dụng Groq API)")
+st.write("Hệ thống phối hợp AI siêu tốc tích hợp Llama 3 trên hạ tầng Groq LPU, Kho tri thức động và Tự động lưu lịch sử.")
 
-# Danh sách các mô hình ChatGPT hỗ trợ
+# Danh sách các mô hình Llama 3/3.1/3.3 miễn phí cực kỳ ổn định trên Groq
 AVAILABLE_MODELS = [
-    "gpt-4o",
-    "gpt-4o-mini",
-    "gpt-4-turbo",
-    "gpt-3.5-turbo"
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "mixtral-8x7b-32768"
 ]
 
 # Khởi tạo dữ liệu cấu hình Agent trong Session State
@@ -91,19 +90,19 @@ if "agents_config" not in st.session_state:
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
-                "model": "gpt-4o-mini",
+                "model": "llama-3.3-70b-versatile",
                 "temperature": 0.3,
                 "system_prompt": "Bạn là chuyên gia hạ tầng CNTT. Hãy phân tích kỹ thuật, phần cứng, mạng và giải pháp công nghệ một cách chuẩn xác."
             },
             "security_expert": {
                 "name": "Chuyên gia ATTT",
-                "model": "gpt-4o-mini",
+                "model": "llama-3.3-70b-versatile",
                 "temperature": 0.1,
                 "system_prompt": "Bạn là chuyên gia An toàn thông tin. Hãy kiểm tra các rủi ro bảo mật, lỗ hổng hệ thống và mức độ tuân thủ tiêu chuẩn kỹ thuật."
             },
             "legal_expert": {
                 "name": "Chuyên gia Pháp chế",
-                "model": "gpt-4o-mini",
+                "model": "llama-3.3-70b-versatile",
                 "temperature": 0.1,
                 "system_prompt": "Bạn là chuyên gia luật công nghệ thông tin và văn bản quy phạm pháp luật hành chính nhà nước. Hãy rà soát tính hợp pháp và quy định liên quan."
             }
@@ -142,7 +141,7 @@ else:
         
         edit_name = st.sidebar.text_input("Tên hiển thị", value=current_data["name"])
         
-        current_model = current_data.get("model", "gpt-4o-mini")
+        current_model = current_data.get("model", "llama-3.3-70b-versatile")
         model_index = AVAILABLE_MODELS.index(current_model) if current_model in AVAILABLE_MODELS else 0
         edit_model = st.sidebar.selectbox("Chọn Model", AVAILABLE_MODELS, index=model_index)
         
@@ -194,26 +193,24 @@ with tab1:
             elif not selected_pipeline:
                 st.warning("Vui lòng chọn ít nhất một Agent!")
             else:
-                api_key = st.secrets.get("OPENAI_API_KEY") if "OPENAI_API_KEY" in st.secrets else os.getenv("OPENAI_API_KEY")
+                api_key = st.secrets.get("GROQ_API_KEY") if "GROQ_API_KEY" in st.secrets else os.getenv("GROQ_API_KEY")
                 if not api_key:
-                    st.error("Chưa cấu hình OPENAI_API_KEY trong Secrets!")
+                    st.error("Chưa cấu hình GROQ_API_KEY trong Secrets!")
                 else:
-                    client = OpenAI(api_key=api_key)
+                    client = Groq(api_key=api_key)
                     
-                    # Đọc nội dung PDF nếu có chọn
                     pdf_content = ""
                     if selected_pdf != "Không dùng tài liệu" and os.path.exists(selected_pdf):
-                        with st.spinner(f"Đang trích xuất nội dung từ {selected_pdf}..."):
+                        with st.spinner(f"Đang trích xuất văn bản từ {selected_pdf}..."):
                             pdf_content = extract_text_from_pdf(selected_pdf)
 
                     accumulated_context = ""
-                    final_report = f"# BÁO CÁO PHỐI HỢP MULTI-AGENT (OPENAI)\n\n**Yêu cầu:** {user_query}\n\n"
+                    final_report = f"# BÁO CÁO PHỐI HỢP MULTI-AGENT (GROQ)\n\n**Yêu cầu:** {user_query}\n\n"
 
                     for idx, agent_key in enumerate(selected_pipeline):
                         agent_info = active_agents[agent_key]
                         with st.spinner(f"Bước {idx+1}: [{agent_info['name']}] đang phân tích..."):
                             
-                            # Đưa nội dung PDF vào prompt của agent cuối hoặc tất cả tùy ý
                             pdf_section = f"\nTÀI LIỆU THAM KHẢO:\n{pdf_content}\n" if (pdf_content and idx == len(selected_pipeline)-1) else ""
                             
                             prompt_content = f"""
@@ -224,7 +221,7 @@ with tab1:
                             {pdf_section}
                             """
                             
-                            agent_output = call_openai_with_retry(
+                            agent_output = call_groq_with_retry(
                                 client=client,
                                 model=agent_info['model'],
                                 system_prompt=agent_info['system_prompt'],
@@ -240,16 +237,14 @@ with tab1:
                         st.write(agent_output)
                         accumulated_context += f"\n\n--- Ý kiến từ {agent_info['name']} ---\n{agent_output}"
                         final_report += f"## Bước {idx+1}: {agent_info['name']}\n{agent_output}\n\n"
-                        
-                        time.sleep(1) # Nghỉ nhẹ giữa các agent
 
-                    save_to_db("Pipeline (OpenAI)", user_query, final_report)
+                    save_to_db("Pipeline (Groq)", user_query, final_report)
                     st.success("🎉 Hoàn tất chuỗi Pipeline và đã lưu lịch sử!")
 
                     st.download_button(
                         label="📥 Tải xuống Báo cáo Tổng hợp (.md)",
                         data=final_report,
-                        file_name=f"openai_multi_agent_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+                        file_name=f"groq_multi_agent_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
                         mime="text/markdown"
                     )
 
@@ -268,22 +263,22 @@ with tab1:
             elif agent_a_key == agent_b_key:
                 st.warning("Vui lòng chọn 2 Agent khác nhau!")
             else:
-                api_key = st.secrets.get("OPENAI_API_KEY") if "OPENAI_API_KEY" in st.secrets else os.getenv("OPENAI_API_KEY")
+                api_key = st.secrets.get("GROQ_API_KEY") if "GROQ_API_KEY" in st.secrets else os.getenv("GROQ_API_KEY")
                 if not api_key:
-                    st.error("Chưa cấu hình OPENAI_API_KEY trong Secrets!")
+                    st.error("Chưa cấu hình GROQ_API_KEY trong Secrets!")
                 else:
-                    client = OpenAI(api_key=api_key)
+                    client = Groq(api_key=api_key)
                     agent_a = active_agents[agent_a_key]
                     agent_b = active_agents[agent_b_key]
 
-                    debate_history = f"# BIÊN BẢN TRANH LUẬN ĐA TÁC NHÂN (OPENAI)\n\n**Chủ đề:** {user_query}\n\n"
+                    debate_history = f"# BIÊN BẢN TRANH LUẬN ĐA TÁC NHÂN (GROQ)\n\n**Chủ đề:** {user_query}\n\n"
 
                     for r in range(debate_rounds):
                         round_num = r + 1
                         
                         with st.spinner(f"Vòng {round_num}: [{agent_a['name']}] đang phát biểu..."):
                             prompt_a = f"LỊCH SỬ TRANH LUẬN:\n{debate_history}\n\nNHIỆM VỤ: Lập luận hoặc bảo vệ quan điểm của bạn về chủ đề trên."
-                            text_a = call_openai_with_retry(
+                            text_a = call_groq_with_retry(
                                 client=client,
                                 model=agent_a['model'],
                                 system_prompt=agent_a['system_prompt'],
@@ -297,7 +292,7 @@ with tab1:
 
                         with st.spinner(f"Vòng {round_num}: [{agent_b['name']}] đang phản biện..."):
                             prompt_b = f"LỊCH SỬ TRANH LUẬN:\n{debate_history}\n\nNHIỆM VỤ: Chỉ ra điểm yếu, rủi ro hoặc phản bác ý kiến vừa rồi của {agent_a['name']}."
-                            text_b = call_openai_with_retry(
+                            text_b = call_groq_with_retry(
                                 client=client,
                                 model=agent_b['model'],
                                 system_prompt=agent_b['system_prompt'],
@@ -308,16 +303,14 @@ with tab1:
                             debate_history += f"## Vòng {round_num} - {agent_b['name']} (Phản biện)\n{text_b}\n\n"
                             st.markdown(f"### 🔴 Vòng {round_num}: {agent_b['name']} phản biện")
                             st.write(text_b)
-                            
-                        time.sleep(1)
 
-                    save_to_db("Debate (OpenAI)", user_query, debate_history)
+                    save_to_db("Debate (Groq)", user_query, debate_history)
                     st.success("🏁 Cuộc tranh luận kết thúc và đã lưu lịch sử!")
 
                     st.download_button(
                         label="📥 Tải xuống Biên bản Tranh luận (.md)",
                         data=debate_history,
-                        file_name=f"openai_debate_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+                        file_name=f"groq_debate_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
                         mime="text/markdown"
                     )
 
