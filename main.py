@@ -75,39 +75,43 @@ def call_groq_with_retry(client, model, system_prompt, user_content, temperature
 # --- CẤU HÌNH GIAO DIỆN TRANG WEB ---
 st.set_page_config(page_title="Pro Multi-Agent System (Groq)", page_icon="⚡", layout="wide")
 st.title("⚡ Hệ thống Đa Tác Nhân Siêu Tốc (Sử dụng Groq API)")
-st.write("Hệ thống phối hợp AI siêu tốc tích hợp Llama mới nhất trên hạ tầng Groq LPU, Kho tri thức động và Tự động lưu lịch sử.")
+st.write("Hệ thống phối hợp AI siêu tốc tích hợp Llama trên hạ tầng Groq LPU, Kho tri thức động và Tự động lưu lịch sử.")
 
-# Danh sách các mô hình chuẩn đang hoạt động ổn định trên Groq
+# Danh sách mô hình an toàn tuyệt đối cho mọi tài khoản Groq
 AVAILABLE_MODELS = [
-    "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
     "mixtral-8x7b-32768"
 ]
 
-# Khởi tạo dữ liệu cấu hình Agent trong Session State
+# Khởi tạo dữ liệu cấu hình Agent và tự động vá lỗi model cũ trong Session State
 if "agents_config" not in st.session_state:
     st.session_state.agents_config = {
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
-                "model": "llama-3.3-70b-versatile",
+                "model": "llama-3.1-8b-instant",
                 "temperature": 0.3,
                 "system_prompt": "Bạn là chuyên gia hạ tầng CNTT. Hãy phân tích kỹ thuật, phần cứng, mạng và giải pháp công nghệ một cách chuẩn xác."
             },
             "security_expert": {
                 "name": "Chuyên gia ATTT",
-                "model": "llama-3.3-70b-versatile",
+                "model": "llama-3.1-8b-instant",
                 "temperature": 0.1,
                 "system_prompt": "Bạn là chuyên gia An toàn thông tin. Hãy kiểm tra các rủi ro bảo mật, lỗ hổng hệ thống và mức độ tuân thủ tiêu chuẩn kỹ thuật."
             },
             "legal_expert": {
                 "name": "Chuyên gia Pháp chế",
-                "model": "llama-3.3-70b-versatile",
+                "model": "llama-3.1-8b-instant",
                 "temperature": 0.1,
                 "system_prompt": "Bạn là chuyên gia luật công nghệ thông tin và văn bản quy phạm pháp luật hành chính nhà nước. Hãy rà soát tính hợp pháp và quy định liên quan."
             }
         }
     }
+else:
+    # Tự động chuyển các model cũ/không hợp lệ về model chuẩn đang hoạt động
+    for agent_key in st.session_state.agents_config["agents"]:
+        if st.session_state.agents_config["agents"][agent_key]["model"] not in AVAILABLE_MODELS:
+            st.session_state.agents_config["agents"][agent_key]["model"] = "llama-3.1-8b-instant"
 
 # ================= THANH SIDEBAR: QUẢN LÝ & CÀI ĐẶT =================
 st.sidebar.header("⚙️ Quản lý Đội ngũ Agents")
@@ -141,7 +145,7 @@ else:
         
         edit_name = st.sidebar.text_input("Tên hiển thị", value=current_data["name"])
         
-        current_model = current_data.get("model", "llama-3.3-70b-versatile")
+        current_model = current_data.get("model", "llama-3.1-8b-instant")
         model_index = AVAILABLE_MODELS.index(current_model) if current_model in AVAILABLE_MODELS else 0
         edit_model = st.sidebar.selectbox("Chọn Model", AVAILABLE_MODELS, index=model_index)
         
