@@ -49,38 +49,49 @@ def extract_text_from_pdf(pdf_path):
         text = f"[Lỗi đọc file PDF {pdf_path}: {e}]"
     return text
 
-# --- HÀM Xây DỰNG CÂY THƯ MỤC KHO TRI THỨC ---
+# --- HÀM TÌM KIẾM THƯ MỤC KHO TRI THỨC TỰ ĐỘNG ---
+def get_knowledge_base_path():
+    possible_names = ["Kho tri thức", "kho tri thuc", "Kho_tri_thuc", "knowledge_base"]
+    for name in possible_names:
+        if os.path.exists(name) and os.path.isdir(name):
+            return name
+    try:
+        for entry in os.scandir("."):
+            if entry.is_dir() and ("tri thức" in entry.name.lower() or "knowledge" in entry.name.lower()):
+                return entry.name
+    except Exception:
+        pass
+    return "Kho tri thức"
+
+# --- HÀM XÂY DỰNG CÂY THƯ MỤC KHO TRI THỨC ---
 def build_file_tree(base_dir):
     tree = {}
     if not os.path.exists(base_dir):
         return tree
-    for entry in os.scandir(base_dir):
-        if entry.is_dir():
-            tree[entry.name] = build_file_tree(entry.path)
-        elif entry.is_file() and entry.name.lower().endswith(".pdf"):
-            tree[entry.name] = entry.path
+    try:
+        for entry in os.scandir(base_dir):
+            if entry.is_dir():
+                tree[entry.name] = build_file_tree(entry.path)
+            elif entry.is_file() and entry.name.lower().endswith(".pdf"):
+                tree[entry.name] = entry.path
+    except Exception:
+        pass
     return tree
 
 # --- HÀM HIỂN THỊ CÂY THƯ MỤC ĐỆ QUY TRÊN SIDEBAR ---
 def render_tree_selector(tree, path_prefix="Kho tri thức"):
     selected_paths = []
     if not tree:
-        st.sidebar.info("Chưa tìm thấy file PDF nào trong thư mục 'Kho tri thức'.")
         return selected_paths
 
     for name, content in tree.items():
         current_path = os.path.join(path_prefix, name)
         if isinstance(content, dict):
-            # Là Thư mục -> Dùng st.expander để có thể thu gọn/mở rộng
             with st.sidebar.expander(f"📁 {name}", expanded=False):
-                # Checkbox chọn toàn bộ thư mục
                 select_all_folder = st.checkbox(f"Chọn tất cả trong '{name}'", key=f"chk_dir_{current_path}")
-                
-                # Đệ quy lấy file con bên trong
                 sub_selected = render_tree_selector(content, current_path)
                 
                 if select_all_folder:
-                    # Lấy toàn bộ đường dẫn file lá trong thư mục này
                     def get_all_leaves(d):
                         files = []
                         for k, v in d.items():
@@ -93,12 +104,11 @@ def render_tree_selector(tree, path_prefix="Kho tri thức"):
                 else:
                     selected_paths.extend(sub_selected)
         else:
-            # Là File PDF -> Checkbox chọn từng file
             is_selected = st.checkbox(f"📄 {name}", key=f"chk_file_{content}", value=False)
             if is_selected:
                 selected_paths.append(content)
                 
-    return list(set(selected_paths)) # Loại bỏ trùng lặp nếu có
+    return list(set(selected_paths))
 
 # --- HÀM LẤY VÀ SẮP XẾP MODEL ƯU TIÊN CHO TIẾNG VIỆT ---
 def get_available_groq_models(api_key):
@@ -165,8 +175,8 @@ AVAILABLE_MODELS = get_available_groq_models(api_key_check) if api_key_check els
 
 default_model = AVAILABLE_MODELS[0] if AVAILABLE_MODELS else "qwen/qwen3.8-27b"
 
-if "agents_config_v9" not in st.session_state:
-    st.session_state.agents_config_v9 = {
+if "agents_config_v10" not in st.session_state:
+    st.session_state.agents_config_v10 = {
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
@@ -189,7 +199,7 @@ if "agents_config_v9" not in st.session_state:
         }
     }
 
-active_agents = st.session_state.agents_config_v9["agents"]
+active_agents = st.session_state.agents_config_v10["agents"]
 
 # ================= THANH SIDEBAR: QUẢN LÝ & CÀI ĐẶT =================
 st.sidebar.header("⚙️ Quản lý Đội ngũ Agents")
@@ -248,11 +258,15 @@ else:
 
 st.sidebar.divider()
 st.sidebar.header("🌲 Kho Tri thức Động (Cây Thư Mục)")
-knowledge_tree = build_file_tree("Kho tri thức")
-selected_pdf_files = render_tree_selector(knowledge_tree)
+actual_kb_dir = get_knowledge_base_path()
+knowledge_tree = build_file_tree(actual_kb_dir)
+selected_pdf_files = render_tree_selector(knowledge_tree, path_prefix=actual_kb_dir)
 
-if selected_pdf_files:
-    st.sidebar.success(f"Đã chọn {len(selected_pdf_files)} tài liệu tham khảo.")
+if not knowledge_tree:
+    st.sidebar.warning(f"⚠️ Không tìm thấy file PDF trong thư mục '{actual_kb_dir}'. Hãy kiểm tra lại cấu trúc GitHub.")
+else:
+    if selected_pdf_files:
+        st.sidebar.success(f"Đã chọn {len(selected_pdf_files)} tài liệu tham khảo.")
 
 st.sidebar.divider()
 enable_hitl = st.sidebar.checkbox("🛡️ Bật kiểm duyệt thủ công (Human-in-the-Loop)", value=False)
@@ -299,7 +313,6 @@ with tab1:
                 else:
                     client = Groq(api_key=api_key)
                     
-                    # Trích xuất văn bản từ TẤT CẢ các file PDF đã chọn (hoặc chọn theo thư mục)
                     pdf_content = ""
                     if selected_pdf_files:
                         with st.spinner(f"Đang trích xuất văn bản từ {len(selected_pdf_files)} tài liệu đã chọn..."):
