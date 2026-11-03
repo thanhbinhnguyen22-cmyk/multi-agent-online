@@ -50,7 +50,7 @@ def extract_text_from_pdf(pdf_path):
         text = f"[Lỗi đọc file PDF {pdf_path}: {e}]"
     return text
 
-# --- HÀM TÌM KIẾM THƯ MỤC KHO TRI THỨC (HỖ TRỢ KHÔNG DẤU) ---
+# --- HÀM TÌM KIẾM THƯ MỤC KHO TRI THỨC ---
 def get_knowledge_base_path():
     possible_names = ["kho_tri_thuc", "kho tri thuc", "Kho tri thuc", "knowledge_base", "Kho tri thức"]
     for name in possible_names:
@@ -66,6 +66,17 @@ def get_knowledge_base_path():
     except Exception:
         pass
     return "kho_tri_thuc"
+
+# --- HÀM LẤY TOÀN BỘ ĐƯỜNG DẪN FILE PDF ĐỂ TÌM KIẾM ---
+def get_all_pdf_paths(base_dir):
+    paths = []
+    if not os.path.exists(base_dir):
+        return paths
+    for root, dirs, files in os.walk(base_dir):
+        for f in files:
+            if f.lower().endswith(".pdf"):
+                paths.append(os.path.join(root, f))
+    return paths
 
 # --- HÀM XÂY DỰNG CÂY THƯ MỤC KHO TRI THỨC ---
 def build_file_tree(base_dir):
@@ -91,7 +102,7 @@ def render_tree_selector(tree, path_prefix="kho_tri_thuc"):
     for name, content in tree.items():
         current_path = os.path.join(path_prefix, name)
         if isinstance(content, dict):
-            with st.sidebar.expander(f"📁 {name}", expanded=True):
+            with st.sidebar.expander(f"📁 {name}", expanded=False):
                 select_all_folder = st.checkbox(f"📁 Chọn tất cả trong '{name}'", key=f"chk_dir_{current_path}")
                 sub_selected = render_tree_selector(content, current_path)
                 
@@ -179,8 +190,8 @@ AVAILABLE_MODELS = get_available_groq_models(api_key_check) if api_key_check els
 
 default_model = AVAILABLE_MODELS[0] if AVAILABLE_MODELS else "qwen/qwen3.8-27b"
 
-if "agents_config_v13" not in st.session_state:
-    st.session_state.agents_config_v13 = {
+if "agents_config_v14" not in st.session_state:
+    st.session_state.agents_config_v14 = {
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
@@ -203,7 +214,7 @@ if "agents_config_v13" not in st.session_state:
         }
     }
 
-active_agents = st.session_state.agents_config_v13["agents"]
+active_agents = st.session_state.agents_config_v14["agents"]
 
 # ================= THANH SIDEBAR: QUẢN LÝ & CÀI ĐẶT =================
 st.sidebar.header("⚙️ Quản lý Đội ngũ Agents")
@@ -261,16 +272,30 @@ else:
                 st.rerun()
 
 st.sidebar.divider()
-st.sidebar.header("🌲 Kho Tri thức Động (Cây Thư Mục)")
+st.sidebar.header("🌲 Kho Tri thức Động")
 actual_kb_dir = get_knowledge_base_path()
-knowledge_tree = build_file_tree(actual_kb_dir)
-selected_pdf_files = render_tree_selector(knowledge_tree, path_prefix=actual_kb_dir)
 
-if not knowledge_tree:
-    st.sidebar.warning(f"⚠️ Không tìm thấy file PDF trong thư mục '{actual_kb_dir}'. Hãy kiểm tra lại cấu trúc GitHub.")
+# Thêm tính năng Tìm kiếm tài liệu nhanh
+search_keyword = st.sidebar.text_input("🔍 Tìm kiếm tài liệu nhanh", placeholder="Nhập tên file cần tìm...")
+
+selected_pdf_files = []
+if search_keyword:
+    all_pdfs = get_all_pdf_paths(actual_kb_dir)
+    matched_pdfs = [p for p in all_pdfs if search_keyword.lower() in os.path.basename(p).lower()]
+    st.sidebar.markdown(f"**Kết quả tìm kiếm ({len(matched_pdfs)}):**")
+    if matched_pdfs:
+        for p in matched_pdfs:
+            if st.sidebar.checkbox(f"📄 {os.path.basename(p)}", key=f"search_{p}", value=False):
+                selected_pdf_files.append(p)
+    else:
+        st.sidebar.info("Không tìm thấy file phù hợp.")
 else:
-    if selected_pdf_files:
-        st.sidebar.success(f"Đã chọn {len(selected_pdf_files)} tài liệu tham khảo.")
+    # Hiển thị cây thư mục thu gọn mặc định
+    knowledge_tree = build_file_tree(actual_kb_dir)
+    selected_pdf_files = render_tree_selector(knowledge_tree, path_prefix=actual_kb_dir)
+
+if selected_pdf_files:
+    st.sidebar.success(f"Đã chọn {len(selected_pdf_files)} tài liệu tham khảo.")
 
 st.sidebar.divider()
 enable_hitl = st.sidebar.checkbox("🛡️ Bật kiểm duyệt thủ công (Human-in-the-Loop)", value=False)
@@ -390,7 +415,7 @@ with tab1:
 
         if st.button("⚔️ Bắt đầu Cuộc Tranh Luận", type="primary"):
             if not user_query:
-                st.warning("Vui lòng nhập chủ đề tranh luận!")
+                st.warning("Vui nhập chủ đề tranh luận!")
             elif agent_a_key == agent_b_key:
                 st.warning("Vui lòng chọn 2 Agent khác nhau!")
             else:
