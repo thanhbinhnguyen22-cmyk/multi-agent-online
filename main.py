@@ -176,7 +176,52 @@ def call_groq_with_retry(client, model, system_prompt, user_content, temperature
 
 # --- CẤU HÌNH GIAO DIỆN TRANG WEB ---
 st.set_page_config(page_title="Pro Multi-Agent System (Groq)", page_icon="⚡", layout="wide")
-st.title("⚡ Hệ thống Đa Tác Nhân Siêu Tốc (Sử dụng Groq API)")
+
+# ================= THANH SIDEBAR: ĐIỀU HƯỚNG & CÀI ĐẶT THEME =================
+st.sidebar.title("⚙️ Tùy chọn Hệ thống")
+
+# Bộ chọn 3 phiên bản Theme: Normal, Light, Dark
+theme_choice = st.sidebar.selectbox(
+    "🎨 Phiên bản Giao diện (Theme)",
+    ["Normal (Mặc định)", "Light (Sáng)", "Dark (Tối)"]
+)
+
+# Xử lý CSS tiêm vào ứng dụng tùy theo lựa chọn của người dùng
+if theme_choice == "Light (Sáng)":
+    st.markdown("""
+        <style>
+        .stApp { background-color: #f8f9fa; color: #212529; }
+        section[data-testid="stSidebar"] { background-color: #e9ecef; }
+        .stTextInput input, .stTextArea textarea, .stSelectbox select { background-color: #ffffff; color: #212529; }
+        </style>
+    """, unsafe_allow_html=True)
+elif theme_choice == "Dark (Tối)":
+    st.markdown("""
+        <style>
+        .stApp { background-color: #0e1117; color: #e6edf3; }
+        section[data-testid="stSidebar"] { background-color: #161b22; }
+        .stTextInput input, .stTextArea textarea, .stSelectbox select { background-color: #0d1117; color: #e6edf3; }
+        </style>
+    """, unsafe_allow_html=True)
+else:
+    # Normal mode (Sử dụng cấu hình mặc định của Streamlit)
+    pass
+
+st.sidebar.divider()
+st.sidebar.title("🧭 Menu Điều Hướng")
+navigation = st.sidebar.radio(
+    "Chọn chức năng:",
+    [
+        "🚀 Chạy Hệ Thống", 
+        "🌲 Kho Tri Thức", 
+        "⚙️ Quản lý Agents", 
+        "📜 Lịch sử Phiên làm việc", 
+        "📘 Kiến trúc & Tổng kết Hệ thống"
+    ]
+)
+
+st.sidebar.divider()
+enable_hitl = st.sidebar.checkbox("🛡️ Bật kiểm duyệt thủ công (HITL)", value=False)
 
 if "error_logs" not in st.session_state:
     st.session_state.error_logs = []
@@ -184,12 +229,23 @@ if "error_logs" not in st.session_state:
 if "selected_pdf_files" not in st.session_state:
     st.session_state.selected_pdf_files = []
 
+with st.sidebar.expander("🛠️ Nhật ký lỗi & Token (" + str(len(st.session_state.error_logs)) + ")", expanded=False):
+    if st.session_state.error_logs:
+        st.warning("Hệ thống đã bắt các lỗi sau:")
+        for log_item in st.session_state.error_logs:
+            st.error(f"**[{log_item['time']}] `{log_item['agent']}`:** {log_item['error']}")
+        if st.button("🗑️ Xóa sạch lỗi"):
+            st.session_state.error_logs = []
+            st.rerun()
+    else:
+        st.info("✨ Chưa có lỗi phát sinh.")
+
 api_key_check = st.secrets.get("GROQ_API_KEY") if "GROQ_API_KEY" in st.secrets else os.getenv("GROQ_API_KEY")
 AVAILABLE_MODELS = get_available_groq_models(api_key_check)
 default_model = AVAILABLE_MODELS[0] if AVAILABLE_MODELS else "qwen/qwen3.8-27b"
 
-if "agents_config_v35" not in st.session_state:
-    st.session_state.agents_config_v35 = {
+if "agents_config_v36" not in st.session_state:
+    st.session_state.agents_config_v36 = {
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
@@ -212,37 +268,11 @@ if "agents_config_v35" not in st.session_state:
         }
     }
 
-active_agents = st.session_state.agents_config_v35["agents"]
-
-# ================= THANH SIDEBAR: ĐIỀU HƯỚNG & CÀI ĐẶT =================
-st.sidebar.title("🧭 Menu Điều Hướng")
-navigation = st.sidebar.radio(
-    "Chọn chức năng:",
-    [
-        "🚀 Chạy Hệ Thống", 
-        "🌲 Kho Tri Thức", 
-        "⚙️ Quản lý Agents", 
-        "📜 Lịch sử Phiên làm việc", 
-        "📘 Kiến trúc & Tổng kết Hệ thống"
-    ]
-)
-
-st.sidebar.divider()
-enable_hitl = st.sidebar.checkbox("🛡️ Bật kiểm duyệt thủ công (HITL)", value=False)
-
-st.sidebar.divider()
-with st.sidebar.expander("🛠️ Nhật ký lỗi & Token (" + str(len(st.session_state.error_logs)) + ")", expanded=False):
-    if st.session_state.error_logs:
-        st.warning("Hệ thống đã bắt các lỗi sau:")
-        for log_item in st.session_state.error_logs:
-            st.error(f"**[{log_item['time']}] `{log_item['agent']}`:** {log_item['error']}")
-        if st.button("🗑️ Xóa sạch lỗi"):
-            st.session_state.error_logs = []
-            st.rerun()
-    else:
-        st.info("✨ Chưa có lỗi phát sinh.")
+active_agents = st.session_state.agents_config_v36["agents"]
 
 # ================= KHU VỰC HIỂN THỊ CHÍNH DỰA TRÊN MENU SIDEBAR =================
+
+st.title("⚡ Hệ thống Đa Tác Nhân Siêu Tốc (Groq AI)")
 
 if navigation == "🚀 Chạy Hệ Thống":
     st.header("🚀 Trung tâm Điều phối Đa Tác Nhân")
@@ -559,7 +589,7 @@ elif navigation == "📘 Kiến trúc & Tổng kết Hệ thống":
 
     ---
     ### 🛠️ 2. Công nghệ & Hạ tầng (Tech Stack)
-    * **Giao diện:** Streamlit (Layout Wide, menu sidebar điều hướng, đệ quy cây thư mục lồng nhau kiểu Windows Explorer).
+    * **Giao diện:** Streamlit (Layout Wide, menu sidebar điều hướng, bộ chọn 3 Theme linh hoạt).
     * **AI Inference:** Groq API (Ưu tiên các model hiểu tiếng Việt tốt như `qwen/qwen3.8-27b`, `openai/gpt-oss-120b`).
     * **Xử lý tài liệu:** `pypdf` (đọc PDF) và `python-docx` (đọc Word).
     * **Cơ sở dữ liệu:** `SQLite` (`database.db`) lưu lịch sử và chỉ mục văn bản (chunks).
