@@ -136,7 +136,7 @@ def render_tree_selector(tree, path_prefix="kho_tri_thuc"):
                 selected_paths.extend(sub_selected)
         else:
             # File PDF nằm ẩn bên trong thư mục, chỉ hiển thị khi người dùng mở thư mục tương ứng
-            is_selected = st.checkbox("📄 " + name, key="chk_file_" + content, value=False)
+            is_selected = st.sidebar.checkbox("📄 " + name, key="chk_file_" + content, value=False)
             if is_selected:
                 selected_paths.append(content)
                 
@@ -207,8 +207,8 @@ AVAILABLE_MODELS = get_available_groq_models(api_key_check) if api_key_check els
 
 default_model = AVAILABLE_MODELS[0] if AVAILABLE_MODELS else "qwen/qwen3.8-27b"
 
-if "agents_config_v31" not in st.session_state:
-    st.session_state.agents_config_v31 = {
+if "agents_config_v32" not in st.session_state:
+    st.session_state.agents_config_v32 = {
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
@@ -231,64 +231,9 @@ if "agents_config_v31" not in st.session_state:
         }
     }
 
-active_agents = st.session_state.agents_config_v31["agents"]
+active_agents = st.session_state.agents_config_v32["agents"]
 
-# ================= THANH SIDEBAR: QUẢN LÝ & CÀI ĐẶT =================
-st.sidebar.header("⚙️ Quản lý Đội ngũ Agents")
-agent_keys = list(active_agents.keys())
-selected_action = st.sidebar.selectbox("Hành động", ["✏️ Chỉnh sửa / Sửa tham số", "➕ Thêm Agent mới"])
-
-if selected_action == "➕ Thêm Agent mới":
-    st.sidebar.subheader("Thêm Tác Nhân Mới")
-    new_key = st.sidebar.text_input("Mã định danh (Key không dấu):")
-    new_name = st.sidebar.text_input("Tên hiển thị:")
-    new_model = st.sidebar.selectbox("Chọn Model", AVAILABLE_MODELS)
-    new_temp = st.sidebar.slider("Temperature (Độ sáng tạo)", 0.0, 1.0, 0.2)
-    new_prompt = st.sidebar.text_area("System Prompt:")
-    
-    if st.sidebar.button("Lưu Agent Mới"):
-        if new_key and new_name and new_prompt:
-            if new_key in active_agents:
-                st.sidebar.error("Mã định danh đã tồn tại!")
-            else:
-                active_agents[new_key] = {
-                    "name": new_name, "model": new_model, "temperature": new_temp, "system_prompt": new_prompt
-                }
-                st.sidebar.success("Đã thêm agent: " + new_name + "!")
-                st.rerun()
-        else:
-            st.sidebar.error("Vui lòng điền đủ thông tin!")
-else:
-    if agent_keys:
-        chosen_agent = st.sidebar.selectbox("Chọn Agent để chỉnh sửa", agent_keys)
-        current_data = active_agents[chosen_agent]
-        
-        edit_name = st.sidebar.text_input("Tên hiển thị", value=current_data["name"])
-        
-        current_model = current_data.get("model", default_model)
-        if current_model not in AVAILABLE_MODELS:
-            current_model = default_model
-        model_index = AVAILABLE_MODELS.index(current_model) if current_model in AVAILABLE_MODELS else 0
-        edit_model = st.sidebar.selectbox("Chọn Model", AVAILABLE_MODELS, index=model_index)
-        
-        edit_temp = st.sidebar.slider("Temperature", 0.0, 1.0, float(current_data.get("temperature", 0.2)))
-        edit_prompt = st.sidebar.text_area("System Prompt", value=current_data["system_prompt"])
-        
-        col_s1, col_s2 = st.sidebar.columns(2)
-        with col_s1:
-            if st.button("Cập nhật"):
-                active_agents[chosen_agent] = {
-                    "name": edit_name, "model": edit_model, "temperature": edit_temp, "system_prompt": edit_prompt
-                }
-                st.success("Đã cập nhật!")
-                st.rerun()
-        with col_s2:
-            if st.button("Xóa", type="primary"):
-                del active_agents[chosen_agent]
-                st.success("Đã xóa!")
-                st.rerun()
-
-st.sidebar.divider()
+# ================= THANH SIDEBAR: KHO TRI THỨC & CÀI ĐẶT GỌN GÀNG =================
 st.sidebar.header("🌲 Kho Tri thức Động")
 actual_kb_dir = get_knowledge_base_path()
 
@@ -315,22 +260,27 @@ if selected_pdf_files:
 st.sidebar.divider()
 enable_hitl = st.sidebar.checkbox("🛡️ Bật kiểm duyệt thủ công (Human-in-the-Loop)", value=False)
 
-# ================= KHUNG QUẢN LÝ NHẬT KÝ LỖI & TOKEN =================
-with st.expander("🛠️ Nhật ký lỗi & Trạng thái Token (" + str(len(st.session_state.error_logs)) + " lỗi ghi nhận)", expanded=False):
+# ================= KHUNG QUẢN LÝ NHẬT KÝ LỖI & TOKEN TRÊN SIDEBAR =================
+with st.sidebar.expander("🛠️ Nhật ký lỗi & Token (" + str(len(st.session_state.error_logs)) + ")", expanded=False):
     if st.session_state.error_logs:
-        st.warning("Hệ thống đã bắt các lỗi token/API bên dưới:")
+        st.warning("Hệ thống đã bắt các lỗi sau:")
         for idx, log_item in enumerate(st.session_state.error_logs):
-            st.error("**[" + log_item['time'] + "] Agent `" + log_item['agent'] + "`:** " + log_item['error'])
-        if st.button("🗑️ Xóa sạch lịch sử lỗi"):
+            st.error("**[" + log_item['time'] + "] `" + log_item['agent'] + "`:** " + log_item['error'])
+        if st.button("🗑️ Xóa sạch lỗi"):
             st.session_state.error_logs = []
             st.rerun()
     else:
-        st.info("✨ Chưa có lỗi phát sinh trong phiên làm việc này.")
+        st.info("✨ Chưa có lỗi phát sinh.")
 
 st.divider()
 
-# ================= GIAO DIỆN CHÍNH (CÓ 3 TAB TRA CỨU) =================
-tab1, tab2, tab3 = st.tabs(["🚀 Chạy Hệ Thống", "📜 Lịch sử Phiên làm việc", "📘 Kiến trúc & Tổng kết Hệ thống"])
+# ================= GIAO DIỆN CHÍNH (4 TABS) =================
+tab1, tab2, tab3, tab4 = st.tabs([
+    "🚀 Chạy Hệ Thống", 
+    "📜 Lịch sử Phiên làm việc", 
+    "⚙️ Quản lý Agents", 
+    "📘 Kiến trúc & Tổng kết Hệ thống"
+])
 
 with tab1:
     mode = st.radio("Chọn phương thức hoạt động:", ["🔄 Chuỗi Pipeline tuần tự", "⚔️ Chế độ Tranh luận Vòng lặp (Debate)"])
@@ -423,9 +373,9 @@ with tab1:
     else:
         col_d1, col_d2 = st.columns(2)
         with col_d1:
-            agent_a_key = st.selectbox("Agent mở đầu", agent_keys, index=0)
+            agent_a_key = st.selectbox("Agent mở đầu", list(active_agents.keys()), index=0, format_func=lambda x: active_agents[x]["name"])
         with col_d2:
-            agent_b_key = st.selectbox("Agent phản biện", agent_keys, index=min(1, len(agent_keys)-1))
+            agent_b_key = st.selectbox("Agent phản biện", list(active_agents.keys()), index=min(1, len(active_agents)-1), format_func=lambda x: active_agents[x]["name"])
             
         debate_rounds = st.slider("Số vòng tranh luận qua lại", min_value=1, max_value=3, value=2)
 
@@ -468,97 +418,4 @@ with tab1:
                                 "error": err_msg
                             })
                             text_a = "⚠️ *[Lỗi xử lý token/API ở vòng này. Xem chi tiết tại Nhật ký lỗi.]*"
-                            st.warning("⚠️ " + agent_a['name'] + " gặp lỗi.")
-
-                        debate_history += "## Vòng " + str(round_num) + " - " + agent_a['name'] + "\n" + text_a + "\n\n"
-                        st.write(text_a)
-
-                        # --- Agent B ---
-                        st.markdown("### 🔴 Vòng " + str(round_num) + ": " + agent_b['name'] + " phản biện")
-                        try:
-                            with st.spinner("Đang phản biện..."):
-                                prompt_b = "LỊCH SỬ TRANH LUẬN:\n" + debate_history + "\n\nNHIỆM VỤ: Chỉ ra điểm yếu, rủi ro hoặc phản bác ý kiến vừa rồi của " + agent_a['name'] + " bằng tiếng Việt."
-                                text_b = call_groq_with_retry(
-                                    client=client,
-                                    model=agent_b['model'],
-                                    system_prompt=agent_b['system_prompt'],
-                                    user_content=prompt_b,
-                                    temperature=agent_b.get("temperature", 0.2)
-                                )
-                        except Exception as e:
-                            err_msg = str(e)
-                            st.session_state.error_logs.append({
-                                "time": datetime.now().strftime("%H:%M:%S"),
-                                "agent": agent_b['name'],
-                                "error": err_msg
-                            })
-                            text_b = "⚠️ *[Lỗi xử lý token/API ở vòng này. Xem chi tiết tại Nhật ký lỗi.]*"
-                            st.warning("⚠️ " + agent_b['name'] + " gặp lỗi.")
-
-                        debate_history += "## Vòng " + str(round_num) + " - " + agent_b['name'] + " (Phản biện)\n" + text_b + "\n\n"
-                        st.write(text_b)
-                        time.sleep(0.5)
-
-                    save_to_db("Debate (Groq)", user_query, debate_history)
-                    st.success("🏁 Cuộc tranh luận kết thúc và đã lưu lịch sử!")
-
-                    debate_filename = "groq_debate_report_" + datetime.now().strftime('%Y%m%d_%H%M%S') + ".md"
-                    st.download_button(
-                        label="📥 Tải xuống Biên bản Tranh luận (.md)",
-                        data=debate_history,
-                        file_name=debate_filename,
-                        mime="text/markdown"
-                    )
-
-with tab2:
-    st.subheader("📜 Lịch sử các phiên làm việc trước đây")
-    try:
-        conn = sqlite3.connect("database.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, timestamp, mode, query, result FROM history ORDER BY id DESC")
-        rows = cursor.fetchall()
-        conn.close()
-
-        if not rows:
-            st.info("Chưa có lịch sử phiên làm việc nào.")
-        else:
-            for row in rows:
-                expander_title = "[" + str(row[1]) + "] Chế độ: " + str(row[2]) + " — Yêu cầu: " + str(row[3][:50]) + "..."
-                with st.expander(expander_title):
-                    st.write("**Yêu cầu gốc:** " + str(row[3]))
-                    st.markdown("---")
-                    st.markdown(str(row[4]))
-    except Exception:
-        st.info("Chưa có lịch sử phiên làm việc nào hoặc cơ sở dữ liệu đang khởi tạo.")
-
-# ================= TAB 3: TỔNG KẾT & TRA CỨU KIẾN TRÚC DỰ ÁN =================
-with tab3:
-    st.header("📘 Bảng Tra cứu Kiến trúc & Thiết kế Hệ thống")
-    st.markdown("""
-    ---
-    ### 🎯 1. Mục tiêu Dự án
-    * **Tên ứng dụng:** Multi-Agent Knowledge System (Hệ thống Đa tác nhân phân tích kho tri thức).
-    * **Mục đích:** Triển khai ứng dụng web AI kết hợp các Tác nhân chuyên môn (CNTT, ATTT, Pháp chế...) làm việc tuần tự (Pipeline) hoặc tranh luận (Debate) để thẩm định văn bản quy phạm pháp luật/kỹ thuật.
-    * **Quy mô dữ liệu:** Kho tài liệu phân cấp (`ATTT`, `CNTT`...), dự kiến **~200 file (.pdf / .docx)** với dung lượng tối đa **~2GB**.
-
-    ---
-    ### 🛠️ 2. Công nghệ & Hạ tầng (Tech Stack)
-    * **Giao diện:** Streamlit (Layout Wide, đệ quy cây thư mục lồng nhau kiểu Windows Explorer).
-    * **AI Inference:** Groq API (Ưu tiên các model hiểu tiếng Việt tốt như `qwen/qwen3.8-27b`, `openai/gpt-oss-120b`).
-    * **Xử lý tài liệu:** `pypdf` (đọc PDF) và `python-docx` (đọc Word).
-    * **Cơ sở dữ liệu:** `SQLite` (`database.db`) lưu lịch sử và chỉ mục văn bản (chunks).
-    * **Quản lý code & Đồng bộ:** GitHub + GitHub Desktop (`PyGithub` cho phép tải file từxa).
-
-    ---
-    ### 🏗️ 3. Giải pháp Kiến trúc đã chốt
-    * **Cây thư mục lồng nhau:** 
-      * Ô checkbox chọn tất cả nằm giữa mũi tên mở rộng và icon thư mục (`[✓] 📁 ATTT`).
-      * Thu gọn/mở rộng chuẩn theo cơ chế Windows Explorer (chỉ hiện file con khi mở thư mục).
-    * **Tối ưu RAM & GitHub Limit:** 
-      * Không đẩy toàn bộ 2GB file thô lên GitHub (tránh nén mạng và tràn RAM Streamlit ~1GB).
-      * Thực hiện trích xuất text, cắt chỉ mục (Chunking 500-1000 từ) và lưu vào `SQLite`. Khi chạy online chỉ cần nạp tệp `database.db` đã đóng gói gọn nhẹ.
-    * **Đồng bộ Hybrid (Offline & Online):**
-      * **Tại PC:** Chạy `streamlit run main.py` cục bộ để đạt hiệu năng tối đa trên ổ cứng 2GB.
-      * **Tại Web (Online):** Upload tài liệu trực tiếp qua Streamlit $\rightarrow$ Tự động Push lên GitHub via API $\rightarrow$ Khi bật PC dùng **GitHub Desktop** để kéo (`git pull`) dữ liệu về ổ cứng.
-    ---
-    """)
+                            st
