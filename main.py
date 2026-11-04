@@ -177,18 +177,29 @@ def call_groq_with_retry(client, model, system_prompt, user_content, temperature
 # --- CẤU HÌNH GIAO DIỆN TRANG WEB ---
 st.set_page_config(page_title="Pro Multi-Agent System (Groq)", page_icon="⚡", layout="wide")
 
-# ================= THANH SIDEBAR: ĐIỀU HƯỚNG & CÀI ĐẶT THEME =================
-st.sidebar.title("⚙️ Tùy chọn Hệ thống")
+# Khởi tạo state cho theme nếu chưa có
+if "theme" not in st.session_state:
+    st.session_state.theme = "Normal"
 
-theme_choice = st.sidebar.selectbox(
-    "🎨 Phiên bản Giao diện (Theme)",
-    ["Normal (Mặc định)", "Light (Sáng)", "Dark (Tối)"]
-)
+# ================= THANH SIDEBAR: 3 ICON THEME & ĐIỀU HƯỚNG =================
+st.sidebar.markdown("### 🎨 Giao diện")
+col_t1, col_t2, col_t3 = st.sidebar.columns(3)
+with col_t1:
+    if st.button("🌙", help="Chế độ Tối (Dark)", use_container_width=True):
+        st.session_state.theme = "Dark"
+        st.rerun()
+with col_t2:
+    if st.button("☀️", help="Chế độ Sáng (Light)", use_container_width=True):
+        st.session_state.theme = "Light"
+        st.rerun()
+with col_t3:
+    if st.button("💻", help="Chế độ Mặc định (Normal)", use_container_width=True):
+        st.session_state.theme = "Normal"
+        st.rerun()
 
-# Hiệu ứng CSS nâng cao cho menu sidebar (hiệu ứng hover mượt mà, bo góc, đổi màu active giống dashboard hiện đại)
+# CSS hiệu ứng chuyển động mượt mà cho menu sidebar và theme tương ứng
 sidebar_menu_css = """
 <style>
-/* Tùy chỉnh chung cho sidebar radio menu */
 section[data-testid="stSidebar"] div[role="radiogroup"] label {
     background-color: transparent;
     border-radius: 8px;
@@ -204,7 +215,7 @@ section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
 </style>
 """
 
-if theme_choice == "Light (Sáng)":
+if st.session_state.theme == "Light":
     st.markdown("""
         <style>
         .stApp { background-color: #f8f9fa; color: #212529; }
@@ -212,7 +223,7 @@ if theme_choice == "Light (Sáng)":
         .stTextInput input, .stTextArea textarea, .stSelectbox select { background-color: #ffffff; color: #212529; }
         </style>
     """ + sidebar_menu_css, unsafe_allow_html=True)
-elif theme_choice == "Dark (Tối)":
+elif st.session_state.theme == "Dark":
     st.markdown("""
         <style>
         .stApp { background-color: #0e1117; color: #e6edf3; }
@@ -233,7 +244,8 @@ navigation = st.sidebar.radio(
         "⚙️ Quản lý Agents", 
         "📜 Lịch sử Phiên làm việc", 
         "📘 Kiến trúc & Tổng kết Hệ thống"
-    ]
+    ],
+    label_visibility="collapsed"
 )
 
 st.sidebar.divider()
@@ -605,7 +617,7 @@ elif navigation == "📘 Kiến trúc & Tổng kết Hệ thống":
 
     ---
     ### 🛠️ 2. Công nghệ & Hạ tầng (Tech Stack)
-    * **Giao diện:** Streamlit (Layout Wide, menu sidebar điều hướng với hiệu ứng hover/active hiện đại, bộ chọn 3 Theme linh hoạt).
+    * **Giao diện:** Streamlit (Layout Wide, menu sidebar điều hướng với hiệu ứng hover/active hiện đại, bộ 3 icon chuyển đổi Theme nhanh).
     * **AI Inference:** Groq API (Ưu tiên các model hiểu tiếng Việt tốt như `qwen/qwen3.8-27b`, `openai/gpt-oss-120b`).
     * **Xử lý tài liệu:** `pypdf` (đọc PDF) và `python-docx` (đọc Word).
     * **Cơ sở dữ liệu:** `SQLite` (`database.db`) lưu lịch sử và chỉ mục văn bản (chunks).
