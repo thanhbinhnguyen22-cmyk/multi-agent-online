@@ -180,13 +180,30 @@ st.set_page_config(page_title="Pro Multi-Agent System (Groq)", page_icon="⚡", 
 # ================= THANH SIDEBAR: ĐIỀU HƯỚNG & CÀI ĐẶT THEME =================
 st.sidebar.title("⚙️ Tùy chọn Hệ thống")
 
-# Bộ chọn 3 phiên bản Theme: Normal, Light, Dark
 theme_choice = st.sidebar.selectbox(
     "🎨 Phiên bản Giao diện (Theme)",
     ["Normal (Mặc định)", "Light (Sáng)", "Dark (Tối)"]
 )
 
-# Xử lý CSS tiêm vào ứng dụng tùy theo lựa chọn của người dùng
+# Hiệu ứng CSS nâng cao cho menu sidebar (hiệu ứng hover mượt mà, bo góc, đổi màu active giống dashboard hiện đại)
+sidebar_menu_css = """
+<style>
+/* Tùy chỉnh chung cho sidebar radio menu */
+section[data-testid="stSidebar"] div[role="radiogroup"] label {
+    background-color: transparent;
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 6px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
+    background-color: rgba(128, 128, 128, 0.15);
+    transform: translateX(4px);
+}
+</style>
+"""
+
 if theme_choice == "Light (Sáng)":
     st.markdown("""
         <style>
@@ -194,7 +211,7 @@ if theme_choice == "Light (Sáng)":
         section[data-testid="stSidebar"] { background-color: #e9ecef; }
         .stTextInput input, .stTextArea textarea, .stSelectbox select { background-color: #ffffff; color: #212529; }
         </style>
-    """, unsafe_allow_html=True)
+    """ + sidebar_menu_css, unsafe_allow_html=True)
 elif theme_choice == "Dark (Tối)":
     st.markdown("""
         <style>
@@ -202,10 +219,9 @@ elif theme_choice == "Dark (Tối)":
         section[data-testid="stSidebar"] { background-color: #161b22; }
         .stTextInput input, .stTextArea textarea, .stSelectbox select { background-color: #0d1117; color: #e6edf3; }
         </style>
-    """, unsafe_allow_html=True)
+    """ + sidebar_menu_css, unsafe_allow_html=True)
 else:
-    # Normal mode (Sử dụng cấu hình mặc định của Streamlit)
-    pass
+    st.markdown(sidebar_menu_css, unsafe_allow_html=True)
 
 st.sidebar.divider()
 st.sidebar.title("🧭 Menu Điều Hướng")
@@ -589,7 +605,7 @@ elif navigation == "📘 Kiến trúc & Tổng kết Hệ thống":
 
     ---
     ### 🛠️ 2. Công nghệ & Hạ tầng (Tech Stack)
-    * **Giao diện:** Streamlit (Layout Wide, menu sidebar điều hướng, bộ chọn 3 Theme linh hoạt).
+    * **Giao diện:** Streamlit (Layout Wide, menu sidebar điều hướng với hiệu ứng hover/active hiện đại, bộ chọn 3 Theme linh hoạt).
     * **AI Inference:** Groq API (Ưu tiên các model hiểu tiếng Việt tốt như `qwen/qwen3.8-27b`, `openai/gpt-oss-120b`).
     * **Xử lý tài liệu:** `pypdf` (đọc PDF) và `python-docx` (đọc Word).
     * **Cơ sở dữ liệu:** `SQLite` (`database.db`) lưu lịch sử và chỉ mục văn bản (chunks).
