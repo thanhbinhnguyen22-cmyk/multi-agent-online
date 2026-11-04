@@ -253,4 +253,33 @@ else:
 st.sidebar.markdown("### 🎨 Giao diện Dashboard")
 col_t1, col_t2, col_t3 = st.sidebar.columns(3)
 with col_t1:
-    if st.button("🌙", help
+    if st.button("🌙", help="Chế độ Tối (Dark)", use_container_width=True):
+        st.session_state.theme = "Dark"
+        st.rerun()
+with col_t2:
+    if st.button("☀️", help="Chế độ Sáng (Light)", use_container_width=True):
+        st.session_state.theme = "Light"
+        st.rerun()
+with col_t3:
+    if st.button("💻", help="Chế độ Mặc định (Normal)", use_container_width=True):
+        st.session_state.theme = "Normal"
+        st.rerun()
+
+st.sidebar.divider()
+st.sidebar.markdown("### 🧭 Menu Điều Hướng")
+navigation = st.sidebar.radio(
+    "Chọn chức năng:",
+    [
+        "🚀 Chạy Hệ Thống", 
+        "🌲 Kho Tri Thức", 
+        "⚙️ Quản lý Agents", 
+        "📜 Lịch sử Phiên làm việc", 
+        "📘 Kiến trúc & Tổng kết Hệ thống"
+    ],
+    label_visibility="collapsed"
+)
+
+st.sidebar.divider()
+enable_hitl = st.sidebar.checkbox("🛡️ Bật kiểm duyệt thủ công (HITL)", value=False)
+
+if "
