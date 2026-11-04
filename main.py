@@ -177,17 +177,19 @@ def call_groq_with_retry(client, model, system_prompt, user_content, temperature
 # --- CẤU HÌNH GIAO DIỆN TRANG WEB ---
 st.set_page_config(page_title="Pro Multi-Agent System (Groq)", page_icon="⚡", layout="wide")
 st.title("⚡ Hệ thống Đa Tác Nhân Siêu Tốc (Sử dụng Groq API)")
-st.write("Hệ thống phối hợp AI đa tác nhân tích hợp hạ tầng Groq LPU, Cây thư mục tri thức động và Quản lý lỗi tập trung.")
 
 if "error_logs" not in st.session_state:
     st.session_state.error_logs = []
+
+if "selected_pdf_files" not in st.session_state:
+    st.session_state.selected_pdf_files = []
 
 api_key_check = st.secrets.get("GROQ_API_KEY") if "GROQ_API_KEY" in st.secrets else os.getenv("GROQ_API_KEY")
 AVAILABLE_MODELS = get_available_groq_models(api_key_check)
 default_model = AVAILABLE_MODELS[0] if AVAILABLE_MODELS else "qwen/qwen3.8-27b"
 
-if "agents_config_v34" not in st.session_state:
-    st.session_state.agents_config_v34 = {
+if "agents_config_v35" not in st.session_state:
+    st.session_state.agents_config_v35 = {
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
@@ -210,45 +212,47 @@ if "agents_config_v34" not in st.session_state:
         }
     }
 
-active_agents = st.session_state.agents_config_v34["agents"]
+active_agents = st.session_state.agents_config_v35["agents"]
 
-# ================= GIAO DIỆN CHÍNH (5 TABS) =================
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "🚀 Chạy Hệ Thống", 
-    "🌲 Kho Tri Thức", 
-    "⚙️ Quản lý Agents", 
-    "📜 Lịch sử Phiên làm việc", 
-    "📘 Kiến trúc & Tổng kết Hệ thống"
-])
+# ================= THANH SIDEBAR: ĐIỀU HƯỚNG & CÀI ĐẶT =================
+st.sidebar.title("🧭 Menu Điều Hướng")
+navigation = st.sidebar.radio(
+    "Chọn chức năng:",
+    [
+        "🚀 Chạy Hệ Thống", 
+        "🌲 Kho Tri Thức", 
+        "⚙️ Quản lý Agents", 
+        "📜 Lịch sử Phiên làm việc", 
+        "📘 Kiến trúc & Tổng kết Hệ thống"
+    ]
+)
 
-if "selected_pdf_files" not in st.session_state:
-    st.session_state.selected_pdf_files = []
+st.sidebar.divider()
+enable_hitl = st.sidebar.checkbox("🛡️ Bật kiểm duyệt thủ công (HITL)", value=False)
 
-# --- TAB 1: CHẠY HỆ THỐNG ---
-with tab1:
-    with st.expander("🛡️ Cấu hình Vận hành & Nhật ký Lỗi hệ thống (" + str(len(st.session_state.error_logs)) + " lỗi)", expanded=False):
-        col_op1, col_op2 = st.columns([0.4, 0.6])
-        with col_op1:
-            enable_hitl = st.checkbox("Bật kiểm duyệt thủ công (Human-in-the-Loop)", value=False)
-        with col_op2:
-            if st.session_state.error_logs:
-                if st.button("🗑️ Xóa sạch nhật ký lỗi"):
-                    st.session_state.error_logs = []
-                    st.rerun()
-            else:
-                st.info("✨ Chưa có lỗi phát sinh trong phiên làm việc.")
-        
-        if st.session_state.error_logs:
-            st.divider()
-            for log_item in st.session_state.error_logs:
-                st.error(f"**[{log_item['time']}] `{log_item['agent']}`:** {log_item['error']}")
+st.sidebar.divider()
+with st.sidebar.expander("🛠️ Nhật ký lỗi & Token (" + str(len(st.session_state.error_logs)) + ")", expanded=False):
+    if st.session_state.error_logs:
+        st.warning("Hệ thống đã bắt các lỗi sau:")
+        for log_item in st.session_state.error_logs:
+            st.error(f"**[{log_item['time']}] `{log_item['agent']}`:** {log_item['error']}")
+        if st.button("🗑️ Xóa sạch lỗi"):
+            st.session_state.error_logs = []
+            st.rerun()
+    else:
+        st.info("✨ Chưa có lỗi phát sinh.")
 
+# ================= KHU VỰC HIỂN THỊ CHÍNH DỰA TRÊN MENU SIDEBAR =================
+
+if navigation == "🚀 Chạy Hệ Thống":
+    st.header("🚀 Trung tâm Điều phối Đa Tác Nhân")
+    st.write("Phối hợp các tác nhân AI thực thi Pipeline hoặc Tranh luận dựa trên kho tri thức đã chọn.")
     st.divider()
 
     if st.session_state.selected_pdf_files:
         st.info("📄 **Tài liệu tham khảo đang chọn (" + str(len(st.session_state.selected_pdf_files)) + "):** " + ", ".join([os.path.basename(f) for f in st.session_state.selected_pdf_files[:5]]) + ("..." if len(st.session_state.selected_pdf_files) > 5 else ""))
     else:
-        st.warning("⚠️ Hiện chưa có tài liệu nào được chọn từ Tab '🌲 Kho Tri Thức'. Hệ thống sẽ phân tích dựa trên tri thức sẵn có của AI.")
+        st.warning("⚠️ Hiện chưa có tài liệu nào được chọn từ mục '🌲 Kho Tri Thức'. Hệ thống sẽ phân tích dựa trên tri thức sẵn có của AI.")
 
     st.divider()
     mode = st.radio("Chọn phương thức hoạt động:", ["🔄 Chuỗi Pipeline tuần tự", "⚔️ Chế độ Tranh luận Vòng lặp (Debate)"])
@@ -426,8 +430,7 @@ with tab1:
                         mime="text/markdown"
                     )
 
-# --- TAB 2: KHO TRI THỨC RỘNG RÃI ---
-with tab2:
+elif navigation == "🌲 Kho Tri Thức":
     st.header("🌲 Kho Tri Thức Động")
     st.write("Duyệt cây thư mục tài liệu hoặc tìm kiếm nhanh file PDF cần tham khảo cho các tác nhân AI.")
     st.divider()
@@ -457,8 +460,7 @@ with tab2:
     else:
         st.info("ℹ️ Chưa chọn tài liệu nào. Bạn có thể chọn toàn bộ thư mục bằng checkbox hoặc chọn từng tệp lẻ.")
 
-# --- TAB 3: QUẢN LÝ AGENTS ---
-with tab3:
+elif navigation == "⚙️ Quản lý Agents":
     st.header("⚙️ Quản lý Đội ngũ Agents")
     st.write("Thêm mới, cấu hình tham số, chỉnh sửa system prompt hoặc xóa các tác nhân AI trong hệ thống.")
     st.divider()
@@ -525,8 +527,7 @@ with tab3:
         else:
             st.info("Hiện không có agent nào trong hệ thống.")
 
-# --- TAB 4: LỊCH SỬ PHIÊN LÀM VIỆC ---
-with tab4:
+elif navigation == "📜 Lịch sử Phiên làm việc":
     st.subheader("📜 Lịch sử các phiên làm việc trước đây")
     try:
         conn = sqlite3.connect("database.db")
@@ -547,8 +548,7 @@ with tab4:
     except Exception:
         st.info("Chưa có lịch sử phiên làm việc nào hoặc cơ sở dữ liệu đang khởi tạo.")
 
-# --- TAB 5: TỔNG KẾT & TRA CỨU KIẾN TRÚC DỰ ÁN ---
-with tab5:
+elif navigation == "📘 Kiến trúc & Tổng kết Hệ thống":
     st.header("📘 Bảng Tra cứu Kiến trúc & Thiết kế Hệ thống")
     st.markdown("""
     ---
@@ -559,7 +559,7 @@ with tab5:
 
     ---
     ### 🛠️ 2. Công nghệ & Hạ tầng (Tech Stack)
-    * **Giao diện:** Streamlit (Layout Wide, đệ quy cây thư mục lồng nhau kiểu Windows Explorer).
+    * **Giao diện:** Streamlit (Layout Wide, menu sidebar điều hướng, đệ quy cây thư mục lồng nhau kiểu Windows Explorer).
     * **AI Inference:** Groq API (Ưu tiên các model hiểu tiếng Việt tốt như `qwen/qwen3.8-27b`, `openai/gpt-oss-120b`).
     * **Xử lý tài liệu:** `pypdf` (đọc PDF) và `python-docx` (đọc Word).
     * **Cơ sở dữ liệu:** `SQLite` (`database.db`) lưu lịch sử và chỉ mục văn bản (chunks).
@@ -567,7 +567,7 @@ with tab5:
 
     ---
     ### 🏗️ 3. Giải pháp Kiến trúc đã chốt
-    * **Cây thư mục lồng nhau (Tab 🌲 Kho Tri Thức):** 
+    * **Cây thư mục lồng nhau:** 
       * Ô checkbox chọn tất cả nằm trước tên thư mục (`[✓] 📁 ATTT`).
       * Thu gọn/mở rộng chuẩn theo cơ chế Windows Explorer (chỉ hiện file con khi mở thư mục).
     * **Tối ưu RAM & GitHub Limit:** 
