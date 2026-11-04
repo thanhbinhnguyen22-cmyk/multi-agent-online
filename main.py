@@ -207,8 +207,8 @@ AVAILABLE_MODELS = get_available_groq_models(api_key_check) if api_key_check els
 
 default_model = AVAILABLE_MODELS[0] if AVAILABLE_MODELS else "qwen/qwen3.8-27b"
 
-if "agents_config_v30" not in st.session_state:
-    st.session_state.agents_config_v30 = {
+if "agents_config_v31" not in st.session_state:
+    st.session_state.agents_config_v31 = {
         "agents": {
             "it_expert": {
                 "name": "Chuyên gia CNTT",
@@ -231,7 +231,7 @@ if "agents_config_v30" not in st.session_state:
         }
     }
 
-active_agents = st.session_state.agents_config_v30["agents"]
+active_agents = st.session_state.agents_config_v31["agents"]
 
 # ================= THANH SIDEBAR: QUẢN LÝ & CÀI ĐẶT =================
 st.sidebar.header("⚙️ Quản lý Đội ngũ Agents")
@@ -329,8 +329,8 @@ with st.expander("🛠️ Nhật ký lỗi & Trạng thái Token (" + str(len(st
 
 st.divider()
 
-# ================= GIAO DIỆN CHÍNH =================
-tab1, tab2 = st.tabs(["🚀 Chạy Hệ Thống", "📜 Lịch sử Phiên làm việc"])
+# ================= GIAO DIỆN CHÍNH (CÓ 3 TAB TRA CỨU) =================
+tab1, tab2, tab3 = st.tabs(["🚀 Chạy Hệ Thống", "📜 Lịch sử Phiên làm việc", "📘 Kiến trúc & Tổng kết Hệ thống"])
 
 with tab1:
     mode = st.radio("Chọn phương thức hoạt động:", ["🔄 Chuỗi Pipeline tuần tự", "⚔️ Chế độ Tranh luận Vòng lặp (Debate)"])
@@ -530,3 +530,35 @@ with tab2:
                     st.markdown(str(row[4]))
     except Exception:
         st.info("Chưa có lịch sử phiên làm việc nào hoặc cơ sở dữ liệu đang khởi tạo.")
+
+# ================= TAB 3: TỔNG KẾT & TRA CỨU KIẾN TRÚC DỰ ÁN =================
+with tab3:
+    st.header("📘 Bảng Tra cứu Kiến trúc & Thiết kế Hệ thống")
+    st.markdown("""
+    ---
+    ### 🎯 1. Mục tiêu Dự án
+    * **Tên ứng dụng:** Multi-Agent Knowledge System (Hệ thống Đa tác nhân phân tích kho tri thức).
+    * **Mục đích:** Triển khai ứng dụng web AI kết hợp các Tác nhân chuyên môn (CNTT, ATTT, Pháp chế...) làm việc tuần tự (Pipeline) hoặc tranh luận (Debate) để thẩm định văn bản quy phạm pháp luật/kỹ thuật.
+    * **Quy mô dữ liệu:** Kho tài liệu phân cấp (`ATTT`, `CNTT`...), dự kiến **~200 file (.pdf / .docx)** với dung lượng tối đa **~2GB**.
+
+    ---
+    ### 🛠️ 2. Công nghệ & Hạ tầng (Tech Stack)
+    * **Giao diện:** Streamlit (Layout Wide, đệ quy cây thư mục lồng nhau kiểu Windows Explorer).
+    * **AI Inference:** Groq API (Ưu tiên các model hiểu tiếng Việt tốt như `qwen/qwen3.8-27b`, `openai/gpt-oss-120b`).
+    * **Xử lý tài liệu:** `pypdf` (đọc PDF) và `python-docx` (đọc Word).
+    * **Cơ sở dữ liệu:** `SQLite` (`database.db`) lưu lịch sử và chỉ mục văn bản (chunks).
+    * **Quản lý code & Đồng bộ:** GitHub + GitHub Desktop (`PyGithub` cho phép tải file từxa).
+
+    ---
+    ### 🏗️ 3. Giải pháp Kiến trúc đã chốt
+    * **Cây thư mục lồng nhau:** 
+      * Ô checkbox chọn tất cả nằm giữa mũi tên mở rộng và icon thư mục (`[✓] 📁 ATTT`).
+      * Thu gọn/mở rộng chuẩn theo cơ chế Windows Explorer (chỉ hiện file con khi mở thư mục).
+    * **Tối ưu RAM & GitHub Limit:** 
+      * Không đẩy toàn bộ 2GB file thô lên GitHub (tránh nén mạng và tràn RAM Streamlit ~1GB).
+      * Thực hiện trích xuất text, cắt chỉ mục (Chunking 500-1000 từ) và lưu vào `SQLite`. Khi chạy online chỉ cần nạp tệp `database.db` đã đóng gói gọn nhẹ.
+    * **Đồng bộ Hybrid (Offline & Online):**
+      * **Tại PC:** Chạy `streamlit run main.py` cục bộ để đạt hiệu năng tối đa trên ổ cứng 2GB.
+      * **Tại Web (Online):** Upload tài liệu trực tiếp qua Streamlit $\rightarrow$ Tự động Push lên GitHub via API $\rightarrow$ Khi bật PC dùng **GitHub Desktop** để kéo (`git pull`) dữ liệu về ổ cứng.
+    ---
+    """)
